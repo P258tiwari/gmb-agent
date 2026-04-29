@@ -374,13 +374,22 @@ function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
       <div className="card">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB]">
           <h3 className="text-[15px] font-semibold text-[#111827]">Client Details</h3>
-          <button
-            onClick={startEdit}
-            className="flex items-center gap-1.5 text-[13px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors"
-          >
-            <Pencil size={13} />
-            Edit Details
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 text-[13px] text-[#DC2626] hover:text-[#B91C1C] font-medium transition-colors"
+            >
+              <Trash2 size={13} />
+              Delete Client
+            </button>
+            <button
+              onClick={startEdit}
+              className="flex items-center gap-1.5 text-[13px] text-[#2563EB] hover:text-[#1D4ED8] font-medium transition-colors"
+            >
+              <Pencil size={13} />
+              Edit Details
+            </button>
+          </div>
         </div>
 
         {/* Business Identity */}
