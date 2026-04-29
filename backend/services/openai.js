@@ -1,11 +1,11 @@
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+
 const OpenAI = require('openai');
 const path   = require('path');
 const fs     = require('fs');
 const https  = require('https');
 const http   = require('http');
 const { v4: uuidv4 } = require('uuid');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const CATEGORY_CONTEXTS = {
   'Healthcare & Medical': 'dental clinic or medical office, bright clean aesthetic, professional healthcare staff',
@@ -45,6 +45,7 @@ function buildPrompt(clientData, postType, titleOrPrompt) {
 
 // Strict — throws on any failure. Used by explicit user-triggered regeneration.
 async function generatePostImageStrict(clientData, postType, titleOrPrompt) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const prompt = buildPrompt(clientData, postType, titleOrPrompt);
 
   const response = await openai.images.generate({
