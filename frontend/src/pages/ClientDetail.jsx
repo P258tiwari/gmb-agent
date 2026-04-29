@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, Globe, Phone, MapPin, Clock, DollarSign, Award, Star, Users, Building2, Loader2 } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, MapPin, Award, Star, Users, Building2, Loader2, ExternalLink } from 'lucide-react';
 import ClientLayout from '../components/ClientLayout';
 import GbpOptimizationPanel from '../components/GbpOptimizationPanel';
 import TagInput from '../components/TagInput';
@@ -694,11 +694,9 @@ function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ClientDetail() {
-  const { clientId }      = useParams();
-  const [searchParams]    = useSearchParams();
+  const { clientId }  = useParams();
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [justConnected, setJustConnected] = useState(false);
 
   // GBP sync banner state
   const [gbpSyncStatus, setGbpSyncStatus] = useState(null); // null | 'syncing' | 'done' | 'error'
@@ -718,7 +716,6 @@ export default function ClientDetail() {
   }
 
   useEffect(() => {
-    if (searchParams.get('connected') === '1') setJustConnected(true);
     api.get(`/clients/${clientId}`)
       .then(r => { setClient(r.data); setLoading(false); })
       .catch(() => setLoading(false));
@@ -739,30 +736,17 @@ export default function ClientDetail() {
         {/* ── Main column ─────────────────────────────────────────────────── */}
         <div className="flex-1 space-y-4 min-w-0">
 
-          {/* Page title + Google connect */}
+          {/* Page title */}
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-[24px] font-bold text-[#111827]">
                 {client.businessName || client.name}
               </h1>
-              {client.gbpTokens ? (
+              {(client.gbpAccountId && client.gbpLocationId) && (
                 <span className="flex items-center gap-1.5 text-[12px] font-medium text-[#16A34A] bg-[#F0FDF4] border border-[#BBF7D0] rounded-full px-3 py-1">
                   <CheckCircle2 size={12} />
-                  Google Connected
+                  GBP Linked
                 </span>
-              ) : (
-                <a
-                  href={`/api/auth/google/${clientId}`}
-                  className="flex items-center gap-1.5 text-[12px] font-medium text-white bg-[#2563EB] hover:bg-[#1D4ED8] transition-colors rounded-full px-3 py-1"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                  </svg>
-                  Connect Google
-                </a>
               )}
             </div>
             <p className="text-[14px] text-[#6B7280] mt-0.5">
@@ -771,14 +755,6 @@ export default function ClientDetail() {
               {client.ownerName ? ` · ${client.ownerName}` : ''}
             </p>
           </div>
-
-          {/* Just-connected banner */}
-          {justConnected && (
-            <div className="flex items-center gap-2 bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg px-4 py-3 text-[13px] text-[#15803D]">
-              <CheckCircle2 size={14} />
-              Google Business Profile connected successfully! Sync and insights are now active.
-            </div>
-          )}
 
           {/* GBP sync banner */}
           {gbpSyncStatus && (
@@ -812,6 +788,83 @@ export default function ClientDetail() {
 
         {/* ── Right panel ─────────────────────────────────────────────────── */}
         <div className="w-[272px] space-y-4 flex-shrink-0">
+
+          {/* GBP Profile link card */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[15px] font-semibold text-[#111827]">GBP Profile</h3>
+              {(client.gbpAccountId && client.gbpLocationId) && (
+                <button
+                  onClick={handleGbpSync}
+                  disabled={gbpSyncStatus === 'syncing'}
+                  className="flex items-center gap-1 text-[11px] text-[#6B7280] hover:text-[#374151] disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw size={11} className={gbpSyncStatus === 'syncing' ? 'animate-spin' : ''} />
+                  {gbpSyncStatus === 'syncing' ? 'Syncing…' : 'Sync Now'}
+                </button>
+              )}
+            </div>
+
+            {(client.gbpAccountId && client.gbpLocationId) ? (
+              <>
+                <div className="flex items-start gap-2.5 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Building2 size={14} className="text-[#2563EB]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-[#111827] truncate">
+                      {client.businessName || client.name}
+                    </div>
+                    {client.address && (
+                      <div className="text-[11px] text-[#6B7280] mt-0.5 truncate">{client.address}</div>
+                    )}
+                    {client.category && (
+                      <div className="text-[11px] text-[#9CA3AF] mt-0.5">{client.category}</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-[12px]">
+                  {client.gbpPlaceId && (
+                    <a
+                      href={`https://www.google.com/maps/place/?q=place_id:${client.gbpPlaceId}`}
+                      target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1.5 text-[#2563EB] hover:underline"
+                    >
+                      <ExternalLink size={11} className="flex-shrink-0" />
+                      View on Google Maps
+                    </a>
+                  )}
+                  <a
+                    href={`https://business.google.com/u/0/location/${client.gbpLocationId}`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#374151] hover:underline"
+                  >
+                    <ExternalLink size={11} className="flex-shrink-0" />
+                    Manage in GBP
+                  </a>
+                </div>
+
+                {client.performance?.lastSynced && (
+                  <div className="text-[11px] text-[#9CA3AF] mt-3 pt-3 border-t border-[#F3F4F6]">
+                    Last synced:{' '}
+                    {new Date(client.performance.lastSynced).toLocaleString('en-IN', {
+                      day: 'numeric', month: 'short',
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-3">
+                <Building2 size={20} className="text-[#D1D5DB] mx-auto mb-2" />
+                <p className="text-[12px] text-[#9CA3AF]">No profile linked</p>
+                <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                  Edit client details to link a GBP profile
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Performance */}
           <div className="card p-5">
