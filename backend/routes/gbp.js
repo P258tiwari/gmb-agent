@@ -32,12 +32,53 @@ router.post('/gbp/agency/disconnect', auth, (req, res) => {
 // GET /api/gbp/locations — list all GBP locations linked to agency account
 router.get('/gbp/locations', auth, async (req, res) => {
   const tokens = getAgencyTokens();
-  if (!tokens) return res.json({ locations: [], message: 'Agency Google account not connected' });
+  if (!tokens) return res.json([]);
   try {
     const locations = await gbp.getMyGbpLocations(tokens);
     res.json(locations);
   } catch (err) {
+    console.error('[gbp/locations]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/gbp/debug — raw API check for diagnosing location list issues
+router.get('/gbp/debug', auth, async (req, res) => {
+  const tokens = getAgencyTokens();
+  if (!tokens) return res.json({ error: 'No agency tokens' });
+  try {
+    const { google } = require('googleapis');
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+    oauth2Client.setCredentials(tokens);
+
+    const accountsRes = await oauth2Client.request({
+      url: 'https://mybusiness.googleapis.com/v4/accounts'
+    });
+    const accounts = accountsRes.data.accounts || [];
+
+    const result = [];
+    for (const acc of accounts) {
+      try {
+        const locRes = await oauth2Client.request({
+          url: `https://mybusiness.googleapis.com/v4/${acc.name}/locations`
+        });
+        result.push({ account: acc.name, locations: locRes.data });
+      } catch (e) {
+        result.push({ account: acc.name, error: e.message, status: e.response?.status });
+      }
+    }
+
+    res.json({ accounts: accounts.map(a => a.name), details: result });
+  } catch (err) {
+    res.status(500).json({
+      error: err.message,
+      status: err.response?.status,
+      details: err.response?.data
+    });
   }
 });
 

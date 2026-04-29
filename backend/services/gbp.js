@@ -316,34 +316,35 @@ async function findLocationByPlaceId(tokens, placeId) {
 async function getMyGbpLocations(tokens) {
   if (!tokens) return [];
 
-  try {
-    const { accounts = [] } = await gbpGet(tokens, 'accounts');
-    const locations = [];
+  const accountsData = await gbpGet(tokens, 'accounts');
+  const accounts = accountsData.accounts || [];
 
-    for (const account of accounts) {
-      try {
-        const { locations: locs = [] } = await gbpGet(tokens, `${account.name}/locations`);
-        for (const loc of locs) {
-          const accountNum  = account.name.replace('accounts/', '');
-          const locationNum = loc.name.replace(`${account.name}/locations/`, '');
-          locations.push({
-            placeId:      loc.metadata?.placeId || '',
-            locationId:   locationNum,
-            accountId:    accountNum,
-            businessName: loc.locationName || '',
-            address:      loc.address?.formattedAddress || '',
-            category:     loc.primaryCategory?.displayName || ''
-          });
-        }
-      } catch (e) {
-        console.error('[gbp] getMyGbpLocations account error:', e.message);
+  console.log(`[gbp] getMyGbpLocations: found ${accounts.length} account(s)`);
+
+  const locations = [];
+  for (const account of accounts) {
+    try {
+      const locData = await gbpGet(tokens, `${account.name}/locations`);
+      const locs    = locData.locations || [];
+      console.log(`[gbp] ${account.name}: found ${locs.length} location(s)`);
+
+      for (const loc of locs) {
+        const accountNum  = account.name.replace('accounts/', '');
+        const locationNum = loc.name.replace(`${account.name}/locations/`, '');
+        locations.push({
+          placeId:      loc.metadata?.placeId || '',
+          locationId:   locationNum,
+          accountId:    accountNum,
+          businessName: loc.locationName || '',
+          address:      loc.address?.formattedAddress || '',
+          category:     loc.primaryCategory?.displayName || ''
+        });
       }
+    } catch (e) {
+      console.error(`[gbp] ${account.name} locations error:`, e.response?.data || e.message);
     }
-    return locations;
-  } catch (err) {
-    console.error('[gbp] getMyGbpLocations error:', err.message);
-    return [];
   }
+  return locations;
 }
 
 module.exports = {
