@@ -285,25 +285,44 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
   );
 }
 
-// ─── New-API helpers ──────────────────────────────────────────────────────────
+// ─── New-API helpers (with v4 fallback) ──────────────────────────────────────
 
 async function listAccounts(tokens) {
   const c = authClient(tokens);
-  const { data } = await c.request({ url: `${ACCT_API}/accounts` });
-  return data.accounts || [];
+  try {
+    const { data } = await c.request({ url: `${ACCT_API}/accounts` });
+    return data.accounts || [];
+  } catch (err) {
+    console.warn('[gbp] Account Management API failed, falling back to v4:', err.message);
+    const { data } = await c.request({ url: `${GBP}/accounts` });
+    return data.accounts || [];
+  }
 }
 
 async function listLocations(tokens, accountName) {
   const c = authClient(tokens);
-  const { data } = await c.request({
-    url:    `${BIZ_API}/${accountName}/locations`,
-    params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
-  });
-  return data.locations || [];
+  try {
+    const { data } = await c.request({
+      url:    `${BIZ_API}/${accountName}/locations`,
+      params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
+    });
+    return data.locations || [];
+  } catch (err) {
+    console.warn('[gbp] Business Info API failed, falling back to v4:', err.message);
+    // v4 response uses different field names — normalize to v1 shape
+    const { data } = await c.request({ url: `${GBP}/${accountName}/locations` });
+    return (data.locations || []).map(loc => ({
+      name:                loc.name,
+      title:               loc.locationName || '',
+      storefrontAddress:   { addressLines: [loc.address?.formattedAddress || ''] },
+      primaryCategory:     loc.primaryCategory,
+      metadata:            loc.metadata
+    }));
+  }
 }
 
 function extractLocationNum(locName) {
-  // v1 API returns "locations/{id}" or "accounts/{a}/locations/{id}" — grab last segment
+  // v1: "locations/{id}" | v4: "accounts/{a}/locations/{id}" — always grab last segment
   return locName.split('/').pop();
 }
 
