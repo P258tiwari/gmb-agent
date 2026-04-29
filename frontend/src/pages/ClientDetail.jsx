@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, Globe, Phone, MapPin, Clock, DollarSign, Award, Star, Users } from 'lucide-react';
+import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, Globe, Phone, MapPin, Clock, DollarSign, Award, Star, Users, Building2, Loader2 } from 'lucide-react';
 import ClientLayout from '../components/ClientLayout';
 import GbpOptimizationPanel from '../components/GbpOptimizationPanel';
 import TagInput from '../components/TagInput';
@@ -164,13 +164,20 @@ function EditTagInput({ label, value, onChange, placeholder, helpText }) {
 }
 
 // ─── Main editable business info card ────────────────────────────────────────
-function ClientInfoCard({ client, clientId, onUpdate }) {
+function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
   const { addToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [form, setForm]           = useState({});
 
-  function startEdit() {
+  // GBP location picker state
+  const [agencyConnected,  setAgencyConnected]  = useState(false);
+  const [locations,        setLocations]        = useState([]);
+  const [locLoading,       setLocLoading]       = useState(false);
+  const [locError,         setLocError]         = useState('');
+  const [selectedLocation, setSelectedLocation] = useState(null);
+
+  async function startEdit() {
     setForm({
       businessName:    client.businessName || client.name || '',
       status:          client.status       || 'ACTIVE',
@@ -195,12 +202,68 @@ function ClientInfoCard({ client, clientId, onUpdate }) {
       website:         client.website      || '',
       contactEmail:    client.contactEmail || '',
       services:        client.services     || [],
-      keywords:        client.keywords     || []
+      keywords:        client.keywords     || [],
+      gbpPlaceId:      client.gbpPlaceId   || '',
+      gbpAccountId:    client.gbpAccountId || '',
+      gbpLocationId:   client.gbpLocationId || ''
     });
+
+    // Load GBP locations for the picker
+    setSelectedLocation(null);
+    setLocError('');
+    try {
+      const { data } = await api.get('/gbp/agency/status');
+      setAgencyConnected(data.connected);
+      if (data.connected) {
+        setLocLoading(true);
+        try {
+          const { data: locs } = await api.get('/gbp/locations');
+          const locArray = Array.isArray(locs) ? locs : [];
+          setLocations(locArray);
+          // Pre-select if this client already has a GBP location
+          if (client.gbpAccountId && client.gbpLocationId) {
+            const match = locArray.find(l =>
+              l.accountId === client.gbpAccountId && l.locationId === client.gbpLocationId
+            );
+            if (match) setSelectedLocation(match);
+          } else if (client.gbpPlaceId) {
+            const match = locArray.find(l => l.placeId === client.gbpPlaceId);
+            if (match) setSelectedLocation(match);
+          }
+        } catch { setLocError('Failed to load locations.'); }
+        finally { setLocLoading(false); }
+      }
+    } catch { /* agency status check failed silently */ }
+
     setIsEditing(true);
   }
 
-  function cancelEdit() { setIsEditing(false); }
+  async function loadLocations() {
+    setLocLoading(true);
+    setLocError('');
+    try {
+      const { data } = await api.get('/gbp/locations');
+      setLocations(Array.isArray(data) ? data : []);
+    } catch { setLocError('Failed to load locations. Please try again.'); }
+    finally { setLocLoading(false); }
+  }
+
+  function handleSelectLocation(loc) {
+    setSelectedLocation(loc);
+    setForm(f => ({
+      ...f,
+      gbpPlaceId:    loc.placeId    || '',
+      gbpAccountId:  loc.accountId  || '',
+      gbpLocationId: loc.locationId || ''
+    }));
+  }
+
+  function handleClearLocation() {
+    setSelectedLocation(null);
+    setForm(f => ({ ...f, gbpPlaceId: '', gbpAccountId: '', gbpLocationId: '' }));
+  }
+
+  function cancelEdit() { setIsEditing(false); setSelectedLocation(null); }
 
   const set = (field) => (val) => setForm(f => ({ ...f, [field]: val }));
   const setStr = (field) => (e) => setForm(f => ({ ...f, [field]: typeof e === 'string' ? e : e.target.value }));
@@ -212,7 +275,12 @@ function ClientInfoCard({ client, clientId, onUpdate }) {
       const res = await api.put(`/clients/${clientId}`, form);
       onUpdate(res.data);
       setIsEditing(false);
+      setSelectedLocation(null);
       addToast('Client details saved successfully', 'success');
+      // Trigger GBP data sync if a location is linked
+      if (form.gbpAccountId && form.gbpLocationId) {
+        onGbpSync?.();
+      }
     } catch (err) {
       addToast(err.response?.data?.error || 'Failed to save changes', 'error');
     } finally {
@@ -321,6 +389,21 @@ function ClientInfoCard({ client, clientId, onUpdate }) {
                 </span>
               ))}
             </div>
+          )}
+        </CardSection>
+
+        {/* Google Business Profile link status */}
+        <CardSection title="Google Business Profile" icon={Building2}>
+          {(client.gbpAccountId && client.gbpLocationId) ? (
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-[#16A34A] flex-shrink-0" />
+              <span className="text-[13px] text-[#15803D] font-medium">GBP Location Linked</span>
+              <span className="text-[11px] text-[#9CA3AF] ml-auto">ID: {client.gbpLocationId}</span>
+            </div>
+          ) : (
+            <p className="text-[13px] text-[#9CA3AF] italic">
+              No GBP location linked — edit to select a profile
+            </p>
           )}
         </CardSection>
       </div>
@@ -441,6 +524,103 @@ function ClientInfoCard({ client, clientId, onUpdate }) {
         </div>
       </CardSection>
 
+      {/* Section 5 — Google Business Profile */}
+      <CardSection title="Google Business Profile" icon={Building2}>
+        {!agencyConnected ? (
+          <div className="flex items-start gap-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-4 py-3">
+            <span className="text-lg flex-shrink-0">⚠️</span>
+            <div>
+              <div className="text-[13px] font-semibold text-[#92400E]">Google account not connected</div>
+              <div className="text-[12px] text-[#B45309] mt-0.5">
+                Connect your agency Google account in Agency Settings first.
+              </div>
+              <a href="/api/auth/google/agency"
+                className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-semibold text-[#2563EB] hover:underline">
+                Connect Google →
+              </a>
+            </div>
+          </div>
+        ) : selectedLocation ? (
+          <div className="flex items-center gap-4 bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg px-4 py-3">
+            <div className="w-10 h-10 rounded-full bg-[#DCFCE7] flex items-center justify-center flex-shrink-0">
+              <Building2 size={18} className="text-[#16A34A]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-semibold text-[#111827] truncate">{selectedLocation.businessName}</div>
+              {selectedLocation.address && (
+                <div className="flex items-center gap-1 text-[12px] text-[#6B7280] mt-0.5">
+                  <MapPin size={11} className="flex-shrink-0" />
+                  <span className="truncate">{selectedLocation.address}</span>
+                </div>
+              )}
+              {selectedLocation.category && (
+                <div className="text-[11px] text-[#9CA3AF] mt-0.5">{selectedLocation.category}</div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleClearLocation}
+              className="flex-shrink-0 text-[12px] text-[#6B7280] hover:text-[#374151] border border-[#E5E7EB] rounded-md px-2.5 py-1 bg-white transition-colors"
+            >
+              Change
+            </button>
+          </div>
+        ) : locLoading ? (
+          <div className="flex items-center gap-2.5 py-4 text-[13px] text-[#6B7280]">
+            <Loader2 size={15} className="animate-spin text-[#2563EB]" />
+            Loading Google Business Profiles…
+          </div>
+        ) : locError ? (
+          <div className="flex items-center justify-between bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3">
+            <div className="text-[13px] text-[#DC2626]">{locError}</div>
+            <button type="button" onClick={loadLocations}
+              className="flex items-center gap-1 text-[12px] font-semibold text-[#DC2626] hover:underline ml-4">
+              <RefreshCw size={11} /> Retry
+            </button>
+          </div>
+        ) : locations.length === 0 ? (
+          <div className="flex items-start gap-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg px-4 py-3">
+            <Building2 size={16} className="text-[#9CA3AF] flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="text-[13px] text-[#374151]">No Business Profiles found on your Google account.</div>
+              <button type="button" onClick={loadLocations}
+                className="flex items-center gap-1 mt-2 text-[12px] font-semibold text-[#2563EB] hover:underline">
+                <RefreshCw size={11} /> Refresh list
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="text-[12px] text-[#6B7280] mb-2 flex items-center justify-between">
+              <span>{locations.length} profile{locations.length !== 1 ? 's' : ''} found</span>
+              <button type="button" onClick={loadLocations}
+                className="flex items-center gap-1 text-[11px] text-[#9CA3AF] hover:text-[#6B7280]">
+                <RefreshCw size={10} /> Refresh
+              </button>
+            </div>
+            <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
+              {locations.map((loc, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleSelectLocation(loc)}
+                  className="w-full text-left px-4 py-3 hover:bg-[#F9FAFB] border-b border-[#F3F4F6] last:border-0 transition-colors flex items-center gap-3"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center flex-shrink-0">
+                    <Building2 size={14} className="text-[#2563EB]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-[#111827] truncate">{loc.businessName}</div>
+                    <div className="text-[11px] text-[#6B7280] truncate mt-0.5">{loc.address}</div>
+                  </div>
+                  <span className="text-[11px] text-[#9CA3AF] flex-shrink-0">{loc.category}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardSection>
+
       {/* Save / Cancel footer */}
       <div className="px-6 py-4 border-t border-[#E5E7EB] flex items-center justify-end gap-3">
         <button onClick={cancelEdit} className="btn-secondary" disabled={saving}>
@@ -468,6 +648,23 @@ export default function ClientDetail() {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [justConnected, setJustConnected] = useState(false);
+
+  // GBP sync banner state
+  const [gbpSyncStatus, setGbpSyncStatus] = useState(null); // null | 'syncing' | 'done' | 'error'
+
+  async function handleGbpSync() {
+    setGbpSyncStatus('syncing');
+    try {
+      await api.post(`/clients/${clientId}/gbp/sync`);
+      const refreshed = await api.get(`/clients/${clientId}`);
+      setClient(refreshed.data);
+      setGbpSyncStatus('done');
+      setTimeout(() => setGbpSyncStatus(null), 5000);
+    } catch {
+      setGbpSyncStatus('error');
+      setTimeout(() => setGbpSyncStatus(null), 6000);
+    }
+  }
 
   useEffect(() => {
     if (searchParams.get('connected') === '1') setJustConnected(true);
@@ -532,11 +729,30 @@ export default function ClientDetail() {
             </div>
           )}
 
+          {/* GBP sync banner */}
+          {gbpSyncStatus && (
+            <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-[13px] ${
+              gbpSyncStatus === 'syncing' ? 'bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8]' :
+              gbpSyncStatus === 'done'    ? 'bg-[#F0FDF4] border border-[#BBF7D0] text-[#15803D]' :
+                                           'bg-[#FEF2F2] border border-[#FECACA] text-[#DC2626]'
+            }`}>
+              {gbpSyncStatus === 'syncing' && <RefreshCw size={14} className="animate-spin flex-shrink-0" />}
+              {gbpSyncStatus === 'done'    && <CheckCircle2 size={14} className="flex-shrink-0" />}
+              {gbpSyncStatus === 'syncing'
+                ? 'Syncing GBP profile, reviews, and performance data…'
+                : gbpSyncStatus === 'done'
+                ? 'GBP data synced — profile, reviews, and performance updated.'
+                : 'GBP sync failed. Check your Google connection and try again.'
+              }
+            </div>
+          )}
+
           {/* Editable client info card */}
           <ClientInfoCard
             client={client}
             clientId={clientId}
             onUpdate={setClient}
+            onGbpSync={handleGbpSync}
           />
 
           {/* GBP Optimization Panel */}

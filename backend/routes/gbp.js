@@ -263,4 +263,76 @@ router.put('/clients/:clientId/gbp/reject', auth, (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/clients/:clientId/gbp/sync — fetch profile + reviews + insights in one call
+router.post('/clients/:clientId/gbp/sync', auth, async (req, res) => {
+  const client = ds.getClient(req.params.clientId);
+  if (!client) return res.status(404).json({ error: 'Client not found' });
+
+  const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
+  const accountId  = client.gbpAccountId  || client.accountId;
+  const locationId = client.gbpLocationId || client.locationId;
+
+  const result = { profile: null, reviewsSynced: 0, insights: null, errors: [] };
+
+  if (!tokens || !accountId || !locationId) {
+    return res.json({ ...result, message: 'GBP not fully linked — set account and location IDs first' });
+  }
+
+  // 1. GBP profile
+  try {
+    const profile    = await gbp.fetchCurrentProfile(tokens, accountId, locationId);
+    const gbpProfile = { ...profile, lastFetched: new Date().toISOString() };
+    const info       = ds.getClientInfo(req.params.clientId) || {};
+    ds.saveClientInfo(req.params.clientId, { ...info, gbpProfile });
+    result.profile = gbpProfile;
+  } catch (err) {
+    console.error('[gbp/sync] profile:', err.message);
+    result.errors.push(`Profile: ${err.message}`);
+  }
+
+  // 2. Reviews
+  try {
+    const gbpReviews = await gbp.getReviews(tokens, accountId, locationId);
+    const local      = ds.getReviews(req.params.clientId);
+    const localById  = new Map(local.map(r => [r.id, r]));
+    for (const r of gbpReviews) {
+      const existing = localById.get(r.id);
+      localById.set(r.id, existing
+        ? { ...existing, ...r, reply: r.reply || existing.reply, repliedAt: r.repliedAt || existing.repliedAt }
+        : r
+      );
+    }
+    const merged = [...localById.values()].sort((a, b) => new Date(b.date) - new Date(a.date));
+    ds.saveReviews(req.params.clientId, merged);
+    result.reviewsSynced = gbpReviews.length;
+  } catch (err) {
+    console.error('[gbp/sync] reviews:', err.message);
+    result.errors.push(`Reviews: ${err.message}`);
+  }
+
+  // 3. Insights / performance
+  try {
+    const insights = await gbp.getInsights(tokens, accountId, locationId);
+    const saved    = ds.getClient(req.params.clientId);
+    ds.saveClient({
+      ...saved,
+      performance: {
+        ...(saved.performance || {}),
+        profileViews:      insights.profileViews      || 0,
+        phoneCalls:        insights.phoneCalls         || 0,
+        directionRequests: insights.directionClicks    || 0,
+        websiteClicks:     insights.websiteClicks      || 0,
+        searchImpressions: insights.searchImpressions  || 0,
+        lastSynced:        new Date().toISOString()
+      }
+    });
+    result.insights = insights;
+  } catch (err) {
+    console.error('[gbp/sync] insights:', err.message);
+    result.errors.push(`Insights: ${err.message}`);
+  }
+
+  res.json(result);
+});
+
 module.exports = router;
