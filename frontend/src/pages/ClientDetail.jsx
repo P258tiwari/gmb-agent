@@ -163,47 +163,67 @@ function EditTagInput({ label, value, onChange, placeholder, helpText }) {
   );
 }
 
-// ─── GBP manual ID entry (fallback when API listing fails) ───────────────────
+// ─── GBP manual entry via URL paste (fallback when listing API unavailable) ──
 function GbpManualEntry({ form, setForm }) {
-  const hasIds = form.gbpAccountId && form.gbpLocationId;
+  const [urlInput, setUrlInput] = useState('');
+  const [urlError, setUrlError]   = useState('');
+
+  function handleUrl(url) {
+    setUrlInput(url);
+    setUrlError('');
+    if (!url.trim()) return;
+    // business.google.com/u/0/location/{locationId}/...
+    const m = url.match(/\/location\/([A-Za-z0-9_%-]+)/);
+    if (m) {
+      setForm(f => ({ ...f, gbpLocationId: decodeURIComponent(m[1]) }));
+      return;
+    }
+    setUrlError('No Location ID found in this URL — make sure you copied it from your GBP profile page.');
+  }
+
+  const located = !!form.gbpLocationId;
+
   return (
     <div className="border border-dashed border-[#D1D5DB] rounded-lg p-4 bg-[#F9FAFB]">
-      <div className="text-[12px] font-semibold text-[#374151] mb-1">
-        Enter IDs manually
-      </div>
-      <p className="text-[11px] text-[#6B7280] mb-3">
-        Find your Account ID and Location ID in{' '}
-        <a href="https://business.google.com" target="_blank" rel="noreferrer"
-          className="text-[#2563EB] hover:underline">Google Business Profile</a>
-        {' '}→ menu → Business Profile settings → Advanced settings.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="form-label">Account ID</label>
-          <input
-            type="text"
-            value={form.gbpAccountId || ''}
-            onChange={e => setForm(f => ({ ...f, gbpAccountId: e.target.value.trim() }))}
-            className="form-input"
-            placeholder="e.g. 123456789012"
-          />
-        </div>
-        <div>
-          <label className="form-label">Location ID</label>
-          <input
-            type="text"
-            value={form.gbpLocationId || ''}
-            onChange={e => setForm(f => ({ ...f, gbpLocationId: e.target.value.trim() }))}
-            className="form-input"
-            placeholder="e.g. 987654321098"
-          />
-        </div>
-      </div>
-      {hasIds && (
+      <div className="text-[12px] font-semibold text-[#374151] mb-2">Link profile via URL</div>
+      <ol className="text-[11px] text-[#6B7280] mb-3 space-y-1 list-decimal list-inside">
+        <li>Open <a href="https://business.google.com" target="_blank" rel="noreferrer"
+              className="text-[#2563EB] hover:underline">business.google.com</a></li>
+        <li>Click your business → the profile page opens</li>
+        <li>Copy the full page URL and paste it below</li>
+      </ol>
+      <input
+        type="text"
+        value={urlInput}
+        onChange={e => handleUrl(e.target.value)}
+        className="form-input text-[12px]"
+        placeholder="https://business.google.com/u/0/location/..."
+      />
+      {urlError && <p className="text-[11px] text-[#DC2626] mt-1.5">{urlError}</p>}
+      {located && (
         <div className="flex items-center gap-1.5 mt-2 text-[12px] text-[#16A34A]">
-          <CheckCircle2 size={12} /> IDs entered — will be saved on Save Changes
+          <CheckCircle2 size={12} /> Location ID detected — save to link this profile
         </div>
       )}
+      <details className="mt-3">
+        <summary className="text-[11px] text-[#9CA3AF] cursor-pointer hover:text-[#6B7280]">
+          Enter IDs manually instead
+        </summary>
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <div>
+            <label className="form-label">Account ID</label>
+            <input type="text" value={form.gbpAccountId || ''}
+              onChange={e => setForm(f => ({ ...f, gbpAccountId: e.target.value.trim() }))}
+              className="form-input" placeholder="e.g. 123456789" />
+          </div>
+          <div>
+            <label className="form-label">Location ID</label>
+            <input type="text" value={form.gbpLocationId || ''}
+              onChange={e => setForm(f => ({ ...f, gbpLocationId: e.target.value.trim() }))}
+              className="form-input" placeholder="e.g. 987654321" />
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

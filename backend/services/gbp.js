@@ -289,14 +289,36 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
 
 async function listAccounts(tokens) {
   const c = authClient(tokens);
+
+  // 1. New Account Management API
   try {
     const { data } = await c.request({ url: `${ACCT_API}/accounts` });
-    return data.accounts || [];
+    if (data.accounts?.length) return data.accounts;
   } catch (err) {
-    console.warn('[gbp] Account Management API failed, falling back to v4:', err.message);
-    const { data } = await c.request({ url: `${GBP}/accounts` });
-    return data.accounts || [];
+    console.warn('[gbp] Account Management API failed:', err.message);
   }
+
+  // 2. Old v4 API
+  try {
+    const { data } = await c.request({ url: `${GBP}/accounts` });
+    if (data.accounts?.length) return data.accounts;
+  } catch (err) {
+    console.warn('[gbp] v4 accounts API failed:', err.message);
+  }
+
+  // 3. Last resort: OAuth user ID equals the personal GBP account ID
+  try {
+    const oauth2 = google.oauth2({ version: 'v2', auth: c });
+    const { data: ui } = await oauth2.userinfo.get();
+    if (ui.id) {
+      console.log(`[gbp] Using OAuth user ID ${ui.id} as GBP account ID`);
+      return [{ name: `accounts/${ui.id}`, accountName: ui.name || '' }];
+    }
+  } catch (err) {
+    console.warn('[gbp] userinfo fallback failed:', err.message);
+  }
+
+  return [];
 }
 
 async function listLocations(tokens, accountName) {
