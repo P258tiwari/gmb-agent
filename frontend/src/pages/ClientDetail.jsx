@@ -163,6 +163,51 @@ function EditTagInput({ label, value, onChange, placeholder, helpText }) {
   );
 }
 
+// ─── GBP manual ID entry (fallback when API listing fails) ───────────────────
+function GbpManualEntry({ form, setForm }) {
+  const hasIds = form.gbpAccountId && form.gbpLocationId;
+  return (
+    <div className="border border-dashed border-[#D1D5DB] rounded-lg p-4 bg-[#F9FAFB]">
+      <div className="text-[12px] font-semibold text-[#374151] mb-1">
+        Enter IDs manually
+      </div>
+      <p className="text-[11px] text-[#6B7280] mb-3">
+        Find your Account ID and Location ID in{' '}
+        <a href="https://business.google.com" target="_blank" rel="noreferrer"
+          className="text-[#2563EB] hover:underline">Google Business Profile</a>
+        {' '}→ menu → Business Profile settings → Advanced settings.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="form-label">Account ID</label>
+          <input
+            type="text"
+            value={form.gbpAccountId || ''}
+            onChange={e => setForm(f => ({ ...f, gbpAccountId: e.target.value.trim() }))}
+            className="form-input"
+            placeholder="e.g. 123456789012"
+          />
+        </div>
+        <div>
+          <label className="form-label">Location ID</label>
+          <input
+            type="text"
+            value={form.gbpLocationId || ''}
+            onChange={e => setForm(f => ({ ...f, gbpLocationId: e.target.value.trim() }))}
+            className="form-input"
+            placeholder="e.g. 987654321098"
+          />
+        </div>
+      </div>
+      {hasIds && (
+        <div className="flex items-center gap-1.5 mt-2 text-[12px] text-[#16A34A]">
+          <CheckCircle2 size={12} /> IDs entered — will be saved on Save Changes
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main editable business info card ────────────────────────────────────────
 function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
   const { addToast } = useToast();
@@ -571,23 +616,29 @@ function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
             Loading Google Business Profiles…
           </div>
         ) : locError ? (
-          <div className="flex items-center justify-between bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3">
-            <div className="text-[13px] text-[#DC2626]">{locError}</div>
-            <button type="button" onClick={loadLocations}
-              className="flex items-center gap-1 text-[12px] font-semibold text-[#DC2626] hover:underline ml-4">
-              <RefreshCw size={11} /> Retry
-            </button>
-          </div>
-        ) : locations.length === 0 ? (
-          <div className="flex items-start gap-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg px-4 py-3">
-            <Building2 size={16} className="text-[#9CA3AF] flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="text-[13px] text-[#374151]">No Business Profiles found on your Google account.</div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3">
+              <div className="text-[13px] text-[#DC2626]">{locError}</div>
               <button type="button" onClick={loadLocations}
-                className="flex items-center gap-1 mt-2 text-[12px] font-semibold text-[#2563EB] hover:underline">
-                <RefreshCw size={11} /> Refresh list
+                className="flex items-center gap-1 text-[12px] font-semibold text-[#DC2626] hover:underline ml-4">
+                <RefreshCw size={11} /> Retry
               </button>
             </div>
+            <GbpManualEntry form={form} setForm={setForm} />
+          </div>
+        ) : locations.length === 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg px-4 py-3">
+              <Building2 size={16} className="text-[#9CA3AF] flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[13px] text-[#374151]">No Business Profiles found on your Google account.</div>
+                <button type="button" onClick={loadLocations}
+                  className="flex items-center gap-1 mt-2 text-[12px] font-semibold text-[#2563EB] hover:underline">
+                  <RefreshCw size={11} /> Refresh list
+                </button>
+              </div>
+            </div>
+            <GbpManualEntry form={form} setForm={setForm} />
           </div>
         ) : (
           <div>

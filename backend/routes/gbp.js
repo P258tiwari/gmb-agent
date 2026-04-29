@@ -46,41 +46,55 @@ router.get('/gbp/locations', auth, async (req, res) => {
 router.get('/gbp/debug', async (req, res) => {
   const tokens = getAgencyTokens();
   if (!tokens) return res.json({ error: 'No agency tokens' });
+
+  const { google } = require('googleapis');
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+  oauth2Client.setCredentials(tokens);
+
+  const out = {};
+
+  // Test new Account Management API
   try {
-    const { google } = require('googleapis');
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
-    oauth2Client.setCredentials(tokens);
-
-    const accountsRes = await oauth2Client.request({
-      url: 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts'
-    });
-    const accounts = accountsRes.data.accounts || [];
-
-    const result = [];
-    for (const acc of accounts) {
-      try {
-        const locRes = await oauth2Client.request({
-          url: `https://mybusinessbusinessinformation.googleapis.com/v1/${acc.name}/locations`,
-          params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
-        });
-        result.push({ account: acc.name, locations: locRes.data });
-      } catch (e) {
-        result.push({ account: acc.name, error: e.message, status: e.response?.status, details: e.response?.data });
-      }
-    }
-
-    res.json({ accounts: accounts.map(a => a.name), details: result });
-  } catch (err) {
-    res.status(500).json({
-      error: err.message,
-      status: err.response?.status,
-      details: err.response?.data
-    });
+    const r = await oauth2Client.request({ url: 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts' });
+    out.newApi = { ok: true, accounts: (r.data.accounts || []).map(a => a.name) };
+  } catch (e) {
+    out.newApi = { ok: false, status: e.response?.status, error: e.message };
   }
+
+  // Test old v4 API
+  try {
+    const r = await oauth2Client.request({ url: 'https://mybusiness.googleapis.com/v4/accounts' });
+    out.v4Api = { ok: true, accounts: (r.data.accounts || []).map(a => a.name) };
+  } catch (e) {
+    out.v4Api = { ok: false, status: e.response?.status, error: e.message };
+  }
+
+  // If either worked, list locations for first account found
+  const workingAccounts = out.newApi?.accounts || out.v4Api?.accounts || [];
+  if (workingAccounts.length > 0) {
+    const acc = workingAccounts[0];
+    try {
+      const r = await oauth2Client.request({
+        url: `https://mybusinessbusinessinformation.googleapis.com/v1/${acc}/locations`,
+        params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
+      });
+      out.locationsNewApi = { account: acc, ok: true, data: r.data };
+    } catch (e) {
+      out.locationsNewApi = { account: acc, ok: false, status: e.response?.status, error: e.message };
+    }
+    try {
+      const r = await oauth2Client.request({ url: `https://mybusiness.googleapis.com/v4/${acc}/locations` });
+      out.locationsV4 = { account: acc, ok: true, data: r.data };
+    } catch (e) {
+      out.locationsV4 = { account: acc, ok: false, status: e.response?.status, error: e.message };
+    }
+  }
+
+  res.json(out);
 });
 
 // ─── Client-specific GBP routes ───────────────────────────────────────────────
