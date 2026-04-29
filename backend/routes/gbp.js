@@ -65,13 +65,34 @@ router.post('/clients/:clientId/gbp/fetch', auth, async (req, res) => {
   const client = ds.getClient(req.params.clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
-  const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId);
-  const accountId  = client.gbpAccountId  || client.accountId;
-  const locationId = client.gbpLocationId || client.locationId;
+  // Prefer client-level tokens, fall back to agency tokens
+  const tokens = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
+  let accountId  = client.gbpAccountId  || client.accountId;
+  let locationId = client.gbpLocationId || client.locationId;
 
-  if (!tokens || !accountId || !locationId) {
+  if (!tokens) {
     return res.status(400).json({
-      error: 'GBP credentials not set. Connect Google and set Account ID + Location ID first.'
+      error: 'Google not connected. Connect Google in Agency Settings first.'
+    });
+  }
+
+  // Auto-discover accountId + locationId from gbpPlaceId if missing
+  if ((!accountId || !locationId) && client.gbpPlaceId) {
+    try {
+      const found = await gbp.findLocationByPlaceId(tokens, client.gbpPlaceId);
+      if (found) {
+        accountId  = found.accountId;
+        locationId = found.locationId;
+        ds.saveClient({ ...client, gbpAccountId: accountId, gbpLocationId: locationId });
+      }
+    } catch (err) {
+      console.error('[gbp/fetch] placeId lookup:', err.message);
+    }
+  }
+
+  if (!accountId || !locationId) {
+    return res.status(400).json({
+      error: 'GBP location not found. Make sure the Business ID is correct and Google is connected.'
     });
   }
 
@@ -133,7 +154,7 @@ router.put('/clients/:clientId/gbp/approve', auth, async (req, res) => {
 
   // Allow caller to send edited changes; fall back to stored proposedChanges
   const changes    = req.body.changes || pendingUpdate.proposedChanges;
-  const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId);
+  const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
   const accountId  = client.gbpAccountId  || client.accountId;
   const locationId = client.gbpLocationId || client.locationId;
 

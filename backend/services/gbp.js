@@ -286,6 +286,40 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
   return result.data;
 }
 
+// ─── Find location by Place ID (searches all accounts) ───────────────────────
+
+async function findLocationByPlaceId(tokens, placeId) {
+  const oauth2Client = getOAuthClient();
+  oauth2Client.setCredentials(tokens);
+  const mybusiness = google.mybusiness({ version: 'v4', auth: oauth2Client });
+
+  try {
+    const accountsRes = await mybusiness.accounts.list();
+    const accounts    = accountsRes.data.accounts || [];
+
+    for (const account of accounts) {
+      try {
+        const locRes = await mybusiness.accounts.locations.list({ parent: account.name });
+        const locs   = locRes.data.locations || [];
+        const match  = locs.find(loc => {
+          const locPlaceId = loc.metadata?.placeId || '';
+          const locNum     = loc.name.replace(`${account.name}/locations/`, '');
+          return locPlaceId === placeId || locNum === placeId;
+        });
+        if (match) {
+          return {
+            accountId:  account.name.replace('accounts/', ''),
+            locationId: match.name.replace(`${account.name}/locations/`, '')
+          };
+        }
+      } catch { /* skip this account, try next */ }
+    }
+  } catch (err) {
+    console.error('[gbp] findLocationByPlaceId error:', err.message);
+  }
+  return null;
+}
+
 // ─── List all connected GBP locations ─────────────────────────────────────────
 
 async function getMyGbpLocations(tokens) {
@@ -332,5 +366,6 @@ module.exports = {
   createPost, publishPost,
   getInsights,
   getReviews, replyToReview,
-  fetchCurrentProfile, applyGbpUpdate, getMyGbpLocations
+  fetchCurrentProfile, applyGbpUpdate,
+  findLocationByPlaceId, getMyGbpLocations
 };
