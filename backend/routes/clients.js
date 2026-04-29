@@ -168,6 +168,25 @@ router.post('/', auth, async (req, res) => {
         console.log(`[setup] Starting background setup for ${client.businessName}`);
 
         // 0. Auto-sync GBP Profile, Reviews, and Insights if connected
+        if (!client.gbpAccountId && client.gbpLocationId) {
+          try {
+            const gbpService = require('../services/gbp');
+            const agencyData = ds.getAgencyData() || {};
+            const tokens = client.gbpTokens || agencyData.tokens || agencyData.access_token;
+            if (tokens) {
+              const fallbackId = await gbpService.getFallbackAccountId(tokens);
+              if (fallbackId) {
+                console.log(`[setup] Auto-filled missing Account ID with Google profile ID: ${fallbackId}`);
+                client.gbpAccountId = fallbackId;
+                const currentClient = ds.getClient(id);
+                ds.saveClient({ ...currentClient, gbpAccountId: fallbackId });
+              }
+            }
+          } catch (e) {
+            console.error('[setup] Failed to fallback Account ID:', e.message);
+          }
+        }
+
         if (client.gbpAccountId && client.gbpLocationId) {
           try {
             console.log(`[setup] Auto-syncing GBP data for ${client.businessName}`);

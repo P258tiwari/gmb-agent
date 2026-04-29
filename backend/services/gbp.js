@@ -49,6 +49,18 @@ async function getTokenFromCode(code) {
   return tokens;
 }
 
+async function getFallbackAccountId(tokens) {
+  try {
+    const c = authClient(tokens);
+    const oauth2 = google.oauth2({ version: 'v2', auth: c });
+    const { data } = await oauth2.userinfo.get();
+    return data.id || null;
+  } catch (err) {
+    console.warn('[gbp] getFallbackAccountId failed:', err.message);
+    return null;
+  }
+}
+
 // ─── Direct HTTP helpers ──────────────────────────────────────────────────────
 
 async function gbpGet(tokens, path) {
@@ -438,7 +450,7 @@ async function getMyGbpLocations(tokens) {
 }
 
 module.exports = {
-  getAuthUrl, getTokenFromCode, getGoogleUserInfo,
+  getAuthUrl, getTokenFromCode, getGoogleUserInfo, getFallbackAccountId,
   createPost, publishPost,
   getInsights,
   getReviews, replyToReview,
