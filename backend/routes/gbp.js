@@ -42,8 +42,8 @@ router.get('/gbp/locations', auth, async (req, res) => {
   }
 });
 
-// GET /api/gbp/debug — raw API check for diagnosing location list issues
-router.get('/gbp/debug', auth, async (req, res) => {
+// GET /api/gbp/debug — raw API check (no auth needed for browser testing)
+router.get('/gbp/debug', async (req, res) => {
   const tokens = getAgencyTokens();
   if (!tokens) return res.json({ error: 'No agency tokens' });
   try {
