@@ -173,7 +173,7 @@ function GbpManualEntry({ form, setForm }) {
     setUrlError('');
     if (!url.trim()) return;
     // business.google.com/u/0/location/{locationId}/...
-    const m = url.match(/\/location\/([A-Za-z0-9_%-]+)/);
+    const m = url.match(/(?:\/location\/|\/n\/)([A-Za-z0-9_%-]+)/);
     if (m) {
       setForm(f => ({ ...f, gbpLocationId: decodeURIComponent(m[1]) }));
       return;

@@ -758,7 +758,7 @@ function GbpManualEntry({ form, setForm }) {
     setUrlInput(url);
     setUrlError('');
     if (!url.trim()) return;
-    const m = url.match(/\/location\/([A-Za-z0-9_%-]+)/);
+    const m = url.match(/(?:\/location\/|\/n\/)([A-Za-z0-9_%-]+)/);
     if (m) {
       setForm(f => ({ ...f, gbpLocationId: decodeURIComponent(m[1]) }));
       return;
