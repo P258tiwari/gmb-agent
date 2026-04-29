@@ -1,6 +1,8 @@
 const { google } = require('googleapis');
 
-const GBP = 'https://mybusiness.googleapis.com/v4';
+const GBP      = 'https://mybusiness.googleapis.com/v4';
+const ACCT_API = 'https://mybusinessaccountmanagement.googleapis.com/v1';
+const BIZ_API  = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 
 function getOAuthClient() {
   return new google.auth.OAuth2(
@@ -283,24 +285,56 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
   );
 }
 
+// ─── New-API helpers ──────────────────────────────────────────────────────────
+
+async function listAccounts(tokens) {
+  const c = authClient(tokens);
+  const { data } = await c.request({ url: `${ACCT_API}/accounts` });
+  return data.accounts || [];
+}
+
+async function listLocations(tokens, accountName) {
+  const c = authClient(tokens);
+  const { data } = await c.request({
+    url:    `${BIZ_API}/${accountName}/locations`,
+    params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
+  });
+  return data.locations || [];
+}
+
+function extractLocationNum(locName) {
+  // v1 API returns "locations/{id}" or "accounts/{a}/locations/{id}" — grab last segment
+  return locName.split('/').pop();
+}
+
+function formatAddress(storefrontAddress) {
+  if (!storefrontAddress) return '';
+  const parts = [
+    ...(storefrontAddress.addressLines || []),
+    storefrontAddress.locality,
+    storefrontAddress.administrativeArea
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
 // ─── Find location by Place ID ────────────────────────────────────────────────
 
 async function findLocationByPlaceId(tokens, placeId) {
   try {
-    const { accounts = [] } = await gbpGet(tokens, 'accounts');
+    const accounts = await listAccounts(tokens);
 
     for (const account of accounts) {
       try {
-        const { locations = [] } = await gbpGet(tokens, `${account.name}/locations`);
-        const match = locations.find(loc => {
+        const locs = await listLocations(tokens, account.name);
+        const match = locs.find(loc => {
           const locPlaceId = loc.metadata?.placeId || '';
-          const locNum     = loc.name.replace(`${account.name}/locations/`, '');
+          const locNum     = extractLocationNum(loc.name);
           return locPlaceId === placeId || locNum === placeId;
         });
         if (match) {
           return {
             accountId:  account.name.replace('accounts/', ''),
-            locationId: match.name.replace(`${account.name}/locations/`, '')
+            locationId: extractLocationNum(match.name)
           };
         }
       } catch { /* skip this account */ }
@@ -316,27 +350,23 @@ async function findLocationByPlaceId(tokens, placeId) {
 async function getMyGbpLocations(tokens) {
   if (!tokens) return [];
 
-  const accountsData = await gbpGet(tokens, 'accounts');
-  const accounts = accountsData.accounts || [];
-
+  const accounts = await listAccounts(tokens);
   console.log(`[gbp] getMyGbpLocations: found ${accounts.length} account(s)`);
 
   const locations = [];
   for (const account of accounts) {
     try {
-      const locData = await gbpGet(tokens, `${account.name}/locations`);
-      const locs    = locData.locations || [];
+      const locs = await listLocations(tokens, account.name);
       console.log(`[gbp] ${account.name}: found ${locs.length} location(s)`);
 
+      const accountNum = account.name.replace('accounts/', '');
       for (const loc of locs) {
-        const accountNum  = account.name.replace('accounts/', '');
-        const locationNum = loc.name.replace(`${account.name}/locations/`, '');
         locations.push({
           placeId:      loc.metadata?.placeId || '',
-          locationId:   locationNum,
+          locationId:   extractLocationNum(loc.name),
           accountId:    accountNum,
-          businessName: loc.locationName || '',
-          address:      loc.address?.formattedAddress || '',
+          businessName: loc.title || '',
+          address:      formatAddress(loc.storefrontAddress),
           category:     loc.primaryCategory?.displayName || ''
         });
       }

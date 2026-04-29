@@ -56,7 +56,7 @@ router.get('/gbp/debug', auth, async (req, res) => {
     oauth2Client.setCredentials(tokens);
 
     const accountsRes = await oauth2Client.request({
-      url: 'https://mybusiness.googleapis.com/v4/accounts'
+      url: 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts'
     });
     const accounts = accountsRes.data.accounts || [];
 
@@ -64,11 +64,12 @@ router.get('/gbp/debug', auth, async (req, res) => {
     for (const acc of accounts) {
       try {
         const locRes = await oauth2Client.request({
-          url: `https://mybusiness.googleapis.com/v4/${acc.name}/locations`
+          url: `https://mybusinessbusinessinformation.googleapis.com/v1/${acc.name}/locations`,
+          params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
         });
         result.push({ account: acc.name, locations: locRes.data });
       } catch (e) {
-        result.push({ account: acc.name, error: e.message, status: e.response?.status });
+        result.push({ account: acc.name, error: e.message, status: e.response?.status, details: e.response?.data });
       }
     }
 
