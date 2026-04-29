@@ -1,11 +1,19 @@
 const { google } = require('googleapis');
 
+const GBP = 'https://mybusiness.googleapis.com/v4';
+
 function getOAuthClient() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
+}
+
+function authClient(tokens) {
+  const c = getOAuthClient();
+  c.setCredentials(tokens);
+  return c;
 }
 
 function getAuthUrl(state, extraScopes = []) {
@@ -23,9 +31,8 @@ function getAuthUrl(state, extraScopes = []) {
 }
 
 async function getGoogleUserInfo(tokens) {
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+  const c = authClient(tokens);
+  const oauth2 = google.oauth2({ version: 'v2', auth: c });
   const { data } = await oauth2.userinfo.get();
   return {
     name:    data.name    || '',
@@ -40,7 +47,35 @@ async function getTokenFromCode(code) {
   return tokens;
 }
 
-// createPost — primary function used by post-scheduler
+// ─── Direct HTTP helpers ──────────────────────────────────────────────────────
+
+async function gbpGet(tokens, path) {
+  const c = authClient(tokens);
+  const { data } = await c.request({ url: `${GBP}/${path}` });
+  return data;
+}
+
+async function gbpPost(tokens, path, body) {
+  const c = authClient(tokens);
+  const { data } = await c.request({ url: `${GBP}/${path}`, method: 'POST', data: body });
+  return data;
+}
+
+async function gbpPatch(tokens, path, body, updateMask) {
+  const c = authClient(tokens);
+  const url = updateMask ? `${GBP}/${path}?updateMask=${updateMask}` : `${GBP}/${path}`;
+  const { data } = await c.request({ url, method: 'PATCH', data: body });
+  return data;
+}
+
+async function gbpPut(tokens, path, body) {
+  const c = authClient(tokens);
+  const { data } = await c.request({ url: `${GBP}/${path}`, method: 'PUT', data: body });
+  return data;
+}
+
+// ─── Posts ────────────────────────────────────────────────────────────────────
+
 async function createPost(tokens, accountId, client_data, post) {
   const acctId = accountId || client_data.gbpAccountId || client_data.accountId;
   const locId  = client_data.gbpLocationId || client_data.locationId;
@@ -50,12 +85,7 @@ async function createPost(tokens, accountId, client_data, post) {
     return { status: 'skipped' };
   }
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-
-  const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
   const locationName = `accounts/${acctId}/locations/${locId}`;
-
   const postBody = {
     summary: `${post.title}\n\n${post.body}`,
     callToAction: {
@@ -64,7 +94,6 @@ async function createPost(tokens, accountId, client_data, post) {
     }
   };
 
-  // Attach image if hosted locally
   if (post.imageUrl && (post.imageUrl.startsWith('/uploads/') || post.imageUrl.startsWith('http'))) {
     const imageSource = post.imageUrl.startsWith('http')
       ? post.imageUrl
@@ -72,53 +101,42 @@ async function createPost(tokens, accountId, client_data, post) {
     postBody.media = [{ mediaFormat: 'PHOTO', sourceUrl: imageSource }];
   }
 
-  const result = await mybusiness.accounts.locations.localPosts.create({
-    parent:      locationName,
-    requestBody: postBody
-  });
-  return result.data;
+  return gbpPost(tokens, `${locationName}/localPosts`, postBody);
 }
 
-// Legacy alias
 async function publishPost(client_data, post, tokens) {
   return createPost(tokens, client_data.accountId, client_data, post);
 }
+
+// ─── Insights ─────────────────────────────────────────────────────────────────
 
 const EMPTY_INSIGHTS = {
   profileViews: 0, searchImpressions: 0,
   phoneCalls: 0, directionClicks: 0, websiteClicks: 0
 };
 
-// getInsights — returns real GBP metrics; returns zeros when not connected
 async function getInsights(tokens, accountId, locationId, startDate, endDate) {
   if (!tokens || !accountId || !locationId) return EMPTY_INSIGHTS;
 
   try {
-    const oauth2Client = getOAuthClient();
-    oauth2Client.setCredentials(tokens);
-    const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
-
     const start = startDate ? new Date(startDate) : (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
     const end   = endDate   ? new Date(endDate)   : new Date();
 
-    const res = await mybusiness.accounts.locations.reportInsights({
-      name: `accounts/${accountId}`,
-      requestBody: {
-        locationNames: [`accounts/${accountId}/locations/${locationId}`],
-        basicRequest: {
-          metricRequests: [
-            { metric: 'QUERIES_DIRECT'            },
-            { metric: 'QUERIES_INDIRECT'           },
-            { metric: 'ACTIONS_PHONE'              },
-            { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
-            { metric: 'ACTIONS_WEBSITE'            }
-          ],
-          timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }
-        }
+    const data = await gbpPost(tokens, `accounts/${accountId}/locations:reportInsights`, {
+      locationNames: [`accounts/${accountId}/locations/${locationId}`],
+      basicRequest: {
+        metricRequests: [
+          { metric: 'QUERIES_DIRECT'            },
+          { metric: 'QUERIES_INDIRECT'           },
+          { metric: 'ACTIONS_PHONE'              },
+          { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
+          { metric: 'ACTIONS_WEBSITE'            }
+        ],
+        timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }
       }
     });
 
-    return parseInsights(res.data);
+    return parseInsights(data);
   } catch (err) {
     console.error('[gbp] getInsights error:', err.message);
     return EMPTY_INSIGHTS;
@@ -146,7 +164,7 @@ function parseInsights(data) {
   return metrics;
 }
 
-// ─── Reviews ─────────────────────────────────────────────────────────────────
+// ─── Reviews ──────────────────────────────────────────────────────────────────
 
 function starRatingToNumber(starRating) {
   return { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }[starRating] || 0;
@@ -155,22 +173,17 @@ function starRatingToNumber(starRating) {
 async function getReviews(tokens, accountId, locationId) {
   if (!tokens || !accountId || !locationId) return [];
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
   const locationName = `accounts/${accountId}/locations/${locationId}`;
-
   try {
     const all = [];
     let pageToken;
 
     do {
-      const res = await mybusiness.accounts.locations.reviews.list({
-        parent: locationName,
-        pageSize: 50,
-        ...(pageToken ? { pageToken } : {})
-      });
-      const page = res.data.reviews || [];
+      const url = pageToken
+        ? `${locationName}/reviews?pageSize=50&pageToken=${pageToken}`
+        : `${locationName}/reviews?pageSize=50`;
+      const res = await gbpGet(tokens, url);
+      const page = res.reviews || [];
       page.forEach(r => all.push({
         id:            r.reviewId,
         gbpReviewId:   r.reviewId,
@@ -185,7 +198,7 @@ async function getReviews(tokens, accountId, locationId) {
         reply:         r.reviewReply?.comment || null,
         repliedAt:     r.reviewReply?.updateTime || null
       }));
-      pageToken = res.data.nextPageToken;
+      pageToken = res.nextPageToken;
     } while (pageToken);
 
     return all;
@@ -198,17 +211,12 @@ async function getReviews(tokens, accountId, locationId) {
 async function replyToReview(tokens, accountId, locationId, reviewId, replyText) {
   if (!tokens || !accountId || !locationId) return { status: 'skipped' };
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
-  const reviewName   = `accounts/${accountId}/locations/${locationId}/reviews/${reviewId}`;
-
   try {
-    const result = await mybusiness.accounts.locations.reviews.updateReply({
-      name:        reviewName,
-      requestBody: { comment: replyText }
-    });
-    return result.data;
+    return await gbpPut(
+      tokens,
+      `accounts/${accountId}/locations/${locationId}/reviews/${reviewId}/reply`,
+      { comment: replyText }
+    );
   } catch (err) {
     console.error('[gbp] replyToReview error:', err.message);
     throw err;
@@ -220,21 +228,15 @@ async function replyToReview(tokens, accountId, locationId, reviewId, replyText)
 async function fetchCurrentProfile(tokens, accountId, locationId) {
   if (!tokens || !accountId || !locationId) return null;
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
-  const locationName = `accounts/${accountId}/locations/${locationId}`;
-
-  const res = await mybusiness.accounts.locations.get({ name: locationName });
-  const loc = res.data;
+  const loc = await gbpGet(tokens, `accounts/${accountId}/locations/${locationId}`);
 
   return {
-    name:                 loc.locationName || '',
-    primaryCategory:      loc.primaryCategory?.displayName || '',
-    secondaryCategories:  (loc.additionalCategories || []).map(c => c.displayName).filter(Boolean),
-    description:          loc.profile?.description || '',
-    services:             (loc.serviceList?.services || []).map(s => s.displayName || s.serviceTypeId || '').filter(Boolean),
-    rawData:              loc
+    name:                loc.locationName || '',
+    primaryCategory:     loc.primaryCategory?.displayName || '',
+    secondaryCategories: (loc.additionalCategories || []).map(c => c.displayName).filter(Boolean),
+    description:         loc.profile?.description || '',
+    services:            (loc.serviceList?.services || []).map(s => s.displayName || s.serviceTypeId || '').filter(Boolean),
+    rawData:             loc
   };
 }
 
@@ -245,12 +247,7 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
     throw new Error('Missing GBP credentials — connect Google first');
   }
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness   = google.mybusiness({ version: 'v4', auth: oauth2Client });
-  const locationName = `accounts/${accountId}/locations/${locationId}`;
-
-  const updateMask = [];
+  const updateMask  = [];
   const requestBody = {};
 
   if (changes.name) {
@@ -278,30 +275,24 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
 
   if (updateMask.length === 0) return { status: 'no_changes' };
 
-  const result = await mybusiness.accounts.locations.patch({
-    name:        locationName,
-    updateMask:  updateMask.join(','),
-    requestBody
-  });
-  return result.data;
+  return gbpPatch(
+    tokens,
+    `accounts/${accountId}/locations/${locationId}`,
+    requestBody,
+    updateMask.join(',')
+  );
 }
 
-// ─── Find location by Place ID (searches all accounts) ───────────────────────
+// ─── Find location by Place ID ────────────────────────────────────────────────
 
 async function findLocationByPlaceId(tokens, placeId) {
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness = google.mybusiness({ version: 'v4', auth: oauth2Client });
-
   try {
-    const accountsRes = await mybusiness.accounts.list();
-    const accounts    = accountsRes.data.accounts || [];
+    const { accounts = [] } = await gbpGet(tokens, 'accounts');
 
     for (const account of accounts) {
       try {
-        const locRes = await mybusiness.accounts.locations.list({ parent: account.name });
-        const locs   = locRes.data.locations || [];
-        const match  = locs.find(loc => {
+        const { locations = [] } = await gbpGet(tokens, `${account.name}/locations`);
+        const match = locations.find(loc => {
           const locPlaceId = loc.metadata?.placeId || '';
           const locNum     = loc.name.replace(`${account.name}/locations/`, '');
           return locPlaceId === placeId || locNum === placeId;
@@ -312,7 +303,7 @@ async function findLocationByPlaceId(tokens, placeId) {
             locationId: match.name.replace(`${account.name}/locations/`, '')
           };
         }
-      } catch { /* skip this account, try next */ }
+      } catch { /* skip this account */ }
     }
   } catch (err) {
     console.error('[gbp] findLocationByPlaceId error:', err.message);
@@ -320,25 +311,19 @@ async function findLocationByPlaceId(tokens, placeId) {
   return null;
 }
 
-// ─── List all connected GBP locations ─────────────────────────────────────────
+// ─── List all GBP locations ───────────────────────────────────────────────────
 
 async function getMyGbpLocations(tokens) {
   if (!tokens) return [];
 
-  const oauth2Client = getOAuthClient();
-  oauth2Client.setCredentials(tokens);
-  const mybusiness = google.mybusiness({ version: 'v4', auth: oauth2Client });
-
   try {
-    const accountsRes = await mybusiness.accounts.list();
-    const accounts    = accountsRes.data.accounts || [];
-    const locations   = [];
+    const { accounts = [] } = await gbpGet(tokens, 'accounts');
+    const locations = [];
 
     for (const account of accounts) {
       try {
-        const locRes = await mybusiness.accounts.locations.list({ parent: account.name });
-        for (const loc of locRes.data.locations || []) {
-          // Extract numeric IDs only (e.g. "accounts/123/locations/456" → "456")
+        const { locations: locs = [] } = await gbpGet(tokens, `${account.name}/locations`);
+        for (const loc of locs) {
           const accountNum  = account.name.replace('accounts/', '');
           const locationNum = loc.name.replace(`${account.name}/locations/`, '');
           locations.push({
