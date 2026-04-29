@@ -167,6 +167,45 @@ router.post('/', auth, async (req, res) => {
       try {
         console.log(`[setup] Starting background setup for ${client.businessName}`);
 
+        // 0. Auto-sync GBP Profile, Reviews, and Insights if connected
+        if (client.gbpAccountId && client.gbpLocationId) {
+          try {
+            console.log(`[setup] Auto-syncing GBP data for ${client.businessName}`);
+            const gbpService = require('../services/gbp');
+            const agencyData = ds.getAgencyData() || {};
+            const tokens = client.gbpTokens || agencyData.tokens || agencyData.access_token;
+
+            if (tokens) {
+              const profile = await gbpService.fetchCurrentProfile(tokens, client.gbpAccountId, client.gbpLocationId);
+              if (profile) {
+                const info = ds.getClientInfo(id) || {};
+                ds.saveClientInfo(id, { ...info, gbpProfile: { ...profile, lastFetched: new Date().toISOString() } });
+              }
+
+              const reviews = await gbpService.getReviews(tokens, client.gbpAccountId, client.gbpLocationId);
+              if (reviews && reviews.length > 0) {
+                ds.saveReviews(id, reviews);
+              }
+
+              const insights = await gbpService.getInsights(tokens, client.gbpAccountId, client.gbpLocationId);
+              if (insights) {
+                const currentClient = ds.getClient(id);
+                ds.saveClient({
+                  ...currentClient,
+                  performance: {
+                    ...(currentClient.performance || {}),
+                    ...insights,
+                    lastSynced: new Date().toISOString()
+                  }
+                });
+              }
+              console.log(`[setup] GBP sync completed for ${client.businessName}`);
+            }
+          } catch (err) {
+            console.error(`[setup] GBP auto-sync error for ${client.businessName}:`, err.message);
+          }
+        }
+
         // 1. Generate keywords
         const keywords = await serpService.generateKeywords(client);
         ds.saveKeywords(id, keywords);

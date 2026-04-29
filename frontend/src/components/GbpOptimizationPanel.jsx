@@ -103,6 +103,12 @@ export default function GbpOptimizationPanel({ clientId, clientData }) {
   const setEdited = (key, val) => setEditedChanges(e => ({ ...e, [key]: val }));
   const descLen = (editedChanges.description || '').length;
 
+  function sanitizeError(str) {
+    if (!str) return 'An error occurred';
+    const stripped = str.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return stripped.length > 200 ? stripped.slice(0, 200) + '…' : stripped || 'An error occurred';
+  }
+
   return (
     <div className="card">
       {/* Header */}
@@ -144,14 +150,14 @@ export default function GbpOptimizationPanel({ clientId, clientData }) {
         {fetchStatus === 'error' && (
           <div className="flex items-center gap-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3 mb-5 text-[13px] text-[#DC2626]">
             <AlertCircle size={14} className="flex-shrink-0" />
-            {fetchError}
+            {sanitizeError(fetchError)}
           </div>
         )}
 
         {optimizeStatus === 'error' && (
           <div className="flex items-center gap-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3 mb-5 text-[13px] text-[#DC2626]">
             <AlertCircle size={14} className="flex-shrink-0" />
-            {optimizeError}
+            {sanitizeError(optimizeError)}
           </div>
         )}
 
@@ -159,7 +165,7 @@ export default function GbpOptimizationPanel({ clientId, clientData }) {
           <div className="flex items-center justify-between bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-3 mb-5">
             <div className="flex items-center gap-2 text-[13px] text-[#DC2626]">
               <AlertCircle size={14} />
-              {updateError}
+              {sanitizeError(updateError)}
             </div>
             <button
               onClick={() => setShowModal(true)}

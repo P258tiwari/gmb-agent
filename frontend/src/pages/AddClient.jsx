@@ -493,25 +493,21 @@ export default function AddClient() {
                     <RefreshCw size={10} /> Refresh
                   </button>
                 </div>
-                <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
+                <select
+                  className="form-select w-full"
+                  onChange={(e) => {
+                    const loc = locations.find(l => l.locationId === e.target.value);
+                    if (loc) handleSelectLocation(loc);
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>Select a Business Profile...</option>
                   {locations.map((loc, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => handleSelectLocation(loc)}
-                      className="w-full text-left px-4 py-3 hover:bg-[#F9FAFB] border-b border-[#F3F4F6] last:border-0 transition-colors flex items-center gap-3"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-[#EFF6FF] flex items-center justify-center flex-shrink-0">
-                        <Building2 size={14} className="text-[#2563EB]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-semibold text-[#111827] truncate">{loc.businessName}</div>
-                        <div className="text-[11px] text-[#6B7280] truncate mt-0.5">{loc.address}</div>
-                      </div>
-                      <span className="text-[11px] text-[#9CA3AF] flex-shrink-0">{loc.category}</span>
-                    </button>
+                    <option key={i} value={loc.locationId}>
+                      {loc.businessName} {loc.address ? `— ${loc.address}` : ''} {loc.accountId ? `(Account: ${loc.accountId})` : ''}
+                    </option>
                   ))}
-                </div>
+                </select>
                 <p className="text-[11px] text-[#9CA3AF] mt-2">
                   Can't find a profile? Make sure that Google account has manager access to the Business Profile.
                 </p>
