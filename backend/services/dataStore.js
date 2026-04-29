@@ -58,6 +58,10 @@ function saveClient(clientData) {
 
 function deleteClient(clientId) {
   saveAllClients(getAllClients().filter(c => c.id !== clientId));
+  const dir = clientDir(clientId);
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ─── Extended client info — data/clients/{id}/info.json ──────────────────────

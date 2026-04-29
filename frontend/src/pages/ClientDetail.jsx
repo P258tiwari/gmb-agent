@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, MapPin, Award, Star, Users, Building2, Loader2, ExternalLink } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ChevronRight, CheckCircle2, Pencil, X, RefreshCw, Check, Instagram, Facebook, MapPin, Award, Star, Users, Building2, Loader2, ExternalLink, Trash2 } from 'lucide-react';
 import ClientLayout from '../components/ClientLayout';
 import GbpOptimizationPanel from '../components/GbpOptimizationPanel';
 import TagInput from '../components/TagInput';
@@ -231,6 +231,7 @@ function GbpManualEntry({ form, setForm }) {
 // ─── Main editable business info card ────────────────────────────────────────
 function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [form, setForm]           = useState({});
@@ -350,6 +351,20 @@ function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
       addToast(err.response?.data?.error || 'Failed to save changes', 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (window.confirm(`Are you sure you want to completely delete ${client.businessName || client.name}? This will remove all local data, scheduled posts, reviews, and reports. It will NOT delete anything on their live Google Business Profile. This action cannot be undone.`)) {
+      setSaving(true);
+      try {
+        await api.delete(`/clients/${clientId}`);
+        addToast('Client deleted successfully', 'success');
+        navigate('/');
+      } catch (err) {
+        addToast(err.response?.data?.error || 'Failed to delete client', 'error');
+        setSaving(false);
+      }
     }
   }
 
@@ -693,20 +708,31 @@ function ClientInfoCard({ client, clientId, onUpdate, onGbpSync }) {
       </CardSection>
 
       {/* Save / Cancel footer */}
-      <div className="px-6 py-4 border-t border-[#E5E7EB] flex items-center justify-end gap-3">
-        <button onClick={cancelEdit} className="btn-secondary" disabled={saving}>
-          Cancel
-        </button>
+      <div className="px-6 py-4 border-t border-[#E5E7EB] flex items-center justify-between">
         <button
-          onClick={handleSave}
+          onClick={handleDelete}
+          type="button"
           disabled={saving}
-          className="btn-primary disabled:opacity-60"
+          className="text-[#DC2626] flex items-center gap-1.5 text-[13px] font-semibold hover:underline disabled:opacity-50"
         >
-          {saving
-            ? <><RefreshCw size={13} className="animate-spin" /> Saving…</>
-            : <><Check size={13} /> Save Changes</>
-          }
+          <Trash2 size={14} />
+          Delete Client
         </button>
+        <div className="flex items-center gap-3">
+          <button onClick={cancelEdit} className="btn-secondary" disabled={saving}>
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary disabled:opacity-60"
+          >
+            {saving
+              ? <><RefreshCw size={13} className="animate-spin" /> Saving…</>
+              : <><Check size={13} /> Save Changes</>
+            }
+          </button>
+        </div>
       </div>
     </div>
   );
