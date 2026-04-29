@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #F8F9FA;
+    color: #111827;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .status-pill {
+    @apply inline-flex items-center gap-1 px-[10px] py-[3px] rounded-full text-[11px] font-medium;
+  }
+  .btn-primary {
+    @apply bg-[#2563EB] text-white rounded-lg px-[18px] py-[9px] text-[13px] font-medium hover:bg-[#1D4ED8] transition-colors duration-150 inline-flex items-center gap-2;
+  }
+  .btn-secondary {
+    @apply bg-white border border-[#E5E7EB] text-[#374151] rounded-lg px-[18px] py-[9px] text-[13px] font-medium hover:bg-[#F9FAFB] transition-colors duration-150 inline-flex items-center gap-2;
+  }
+  .btn-danger {
+    @apply bg-white border border-[#DC2626] text-[#DC2626] rounded-lg px-[18px] py-[9px] text-[13px] font-medium hover:bg-[#FEF2F2] transition-colors duration-150 inline-flex items-center gap-2;
+  }
+  .card {
+    @apply bg-white border border-[#E5E7EB] rounded-[10px];
+  }
+  .section-label {
+    @apply text-[11px] font-medium uppercase tracking-[0.5px] text-[#9CA3AF];
+  }
+  .form-label {
+    @apply block text-[13px] font-medium text-[#374151] mb-1.5;
+  }
+  .form-input {
+    @apply w-full border border-[#E5E7EB] rounded-lg px-3 py-2.5 text-[13px] text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent placeholder:text-[#9CA3AF] transition-shadow;
+  }
+  .form-select {
+    @apply w-full border border-[#E5E7EB] rounded-lg px-3 py-2.5 text-[13px] text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent;
+  }
+  .form-textarea {
+    @apply w-full border border-[#E5E7EB] rounded-lg px-3 py-2.5 text-[13px] text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent placeholder:text-[#9CA3AF] resize-none;
+  }
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #D1D5DB; }
