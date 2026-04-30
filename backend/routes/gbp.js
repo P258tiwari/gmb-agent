@@ -146,6 +146,19 @@ router.post('/clients/:clientId/gbp/fetch', auth, async (req, res) => {
     }
   }
 
+  // Auto-discover accountId from locationId (new-style /n/{id} URLs have no accountId)
+  if (!accountId && locationId) {
+    try {
+      const found = await gbp.findAccountByLocationId(tokens, locationId);
+      if (found) {
+        accountId = found.accountId;
+        ds.saveClient({ ...client, gbpAccountId: accountId });
+      }
+    } catch (err) {
+      console.error('[gbp/fetch] accountId lookup:', err.message);
+    }
+  }
+
   if (!accountId || !locationId) {
     return res.status(400).json({
       error: 'GBP location not found. Make sure the Business ID is correct and Google is connected.'
@@ -211,8 +224,21 @@ router.put('/clients/:clientId/gbp/approve', auth, async (req, res) => {
   // Allow caller to send edited changes; fall back to stored proposedChanges
   const changes    = req.body.changes || pendingUpdate.proposedChanges;
   const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
-  const accountId  = client.gbpAccountId  || client.accountId;
+  let   accountId  = client.gbpAccountId  || client.accountId;
   const locationId = client.gbpLocationId || client.locationId;
+
+  // Auto-discover accountId from locationId (new-style /n/{id} URLs have no accountId)
+  if (!accountId && locationId && tokens) {
+    try {
+      const found = await gbp.findAccountByLocationId(tokens, locationId);
+      if (found) {
+        accountId = found.accountId;
+        ds.saveClient({ ...client, gbpAccountId: accountId });
+      }
+    } catch (err) {
+      console.error('[gbp/approve] accountId lookup:', err.message);
+    }
+  }
 
   try {
     if (tokens && accountId && locationId) {
@@ -283,14 +309,31 @@ router.post('/clients/:clientId/gbp/sync', auth, async (req, res) => {
   const client = ds.getClient(req.params.clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
-  const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
-  const accountId  = client.gbpAccountId  || client.accountId;
-  const locationId = client.gbpLocationId || client.locationId;
+  const tokens      = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
+  let   accountId   = client.gbpAccountId  || client.accountId;
+  const locationId  = client.gbpLocationId || client.locationId;
 
   const result = { profile: null, reviewsSynced: 0, insights: null, errors: [] };
 
-  if (!tokens || !accountId || !locationId) {
-    return res.json({ ...result, message: 'GBP not fully linked — set account and location IDs first' });
+  if (!tokens || !locationId) {
+    return res.json({ ...result, message: 'GBP not fully linked — set location ID first' });
+  }
+
+  // Auto-discover accountId from locationId (new-style /n/{id} URLs have no accountId)
+  if (!accountId && locationId) {
+    try {
+      const found = await gbp.findAccountByLocationId(tokens, locationId);
+      if (found) {
+        accountId = found.accountId;
+        ds.saveClient({ ...client, gbpAccountId: accountId });
+      }
+    } catch (err) {
+      console.error('[gbp/sync] accountId lookup:', err.message);
+    }
+  }
+
+  if (!accountId) {
+    return res.json({ ...result, message: 'Could not find GBP account for this location — try syncing from Agency Settings' });
   }
 
   // 1. GBP profile

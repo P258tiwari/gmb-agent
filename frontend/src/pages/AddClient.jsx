@@ -778,7 +778,7 @@ function GbpManualEntry({ form, setForm }) {
         value={urlInput}
         onChange={e => handleUrl(e.target.value)}
         className="form-input text-[12px]"
-        placeholder="https://business.google.com/u/0/location/..."
+        placeholder="https://business.google.com/n/{locationId}/profile"
       />
       {urlError && <p className="text-[11px] text-[#DC2626] mt-1.5">{urlError}</p>}
       {located && (

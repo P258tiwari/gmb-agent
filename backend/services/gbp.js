@@ -417,6 +417,29 @@ async function findLocationByPlaceId(tokens, placeId) {
   return null;
 }
 
+// ─── Find accountId by locationId (for new-style /n/{id} URLs) ───────────────
+
+async function findAccountByLocationId(tokens, locationId) {
+  try {
+    const accounts = await listAccounts(tokens);
+    for (const account of accounts) {
+      try {
+        const locs = await listLocations(tokens, account.name);
+        const match = locs.find(loc => extractLocationNum(loc.name) === locationId);
+        if (match) {
+          return {
+            accountId:  account.name.replace('accounts/', ''),
+            locationId: extractLocationNum(match.name)
+          };
+        }
+      } catch { /* skip this account */ }
+    }
+  } catch (err) {
+    console.error('[gbp] findAccountByLocationId error:', err.message);
+  }
+  return null;
+}
+
 // ─── List all GBP locations ───────────────────────────────────────────────────
 
 async function getMyGbpLocations(tokens) {
@@ -455,5 +478,5 @@ module.exports = {
   getInsights,
   getReviews, replyToReview,
   fetchCurrentProfile, applyGbpUpdate,
-  findLocationByPlaceId, getMyGbpLocations
+  findLocationByPlaceId, findAccountByLocationId, getMyGbpLocations
 };

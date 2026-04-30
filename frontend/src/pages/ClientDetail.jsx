@@ -197,7 +197,7 @@ function GbpManualEntry({ form, setForm }) {
         value={urlInput}
         onChange={e => handleUrl(e.target.value)}
         className="form-input text-[12px]"
-        placeholder="https://business.google.com/u/0/location/..."
+        placeholder="https://business.google.com/n/{locationId}/profile"
       />
       {urlError && <p className="text-[11px] text-[#DC2626] mt-1.5">{urlError}</p>}
       {located && (
@@ -891,7 +891,7 @@ export default function ClientDetail() {
                     </a>
                   )}
                   <a
-                    href={`https://business.google.com/u/0/location/${client.gbpLocationId}`}
+                    href={`https://business.google.com/n/${client.gbpLocationId}/profile`}
                     target="_blank" rel="noreferrer"
                     className="flex items-center gap-1.5 text-[#6B7280] hover:text-[#374151] hover:underline"
                   >
