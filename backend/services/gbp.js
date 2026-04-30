@@ -363,7 +363,7 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
 async function listAccounts(tokens) {
   const c = authClient(tokens);
 
-  // 1. New Account Management API
+  // Account Management API (v4 is fully shut down — do not call it)
   try {
     const { data } = await c.request({ url: `${ACCT_API}/accounts` });
     if (data.accounts?.length) return data.accounts;
@@ -371,49 +371,16 @@ async function listAccounts(tokens) {
     console.warn('[gbp] Account Management API failed:', err.message);
   }
 
-  // 2. Old v4 API
-  try {
-    const { data } = await c.request({ url: `${GBP}/accounts` });
-    if (data.accounts?.length) return data.accounts;
-  } catch (err) {
-    console.warn('[gbp] v4 accounts API failed:', err.message);
-  }
-
-  // 3. Last resort: OAuth user ID equals the personal GBP account ID
-  try {
-    const oauth2 = google.oauth2({ version: 'v2', auth: c });
-    const { data: ui } = await oauth2.userinfo.get();
-    if (ui.id) {
-      console.log(`[gbp] Using OAuth user ID ${ui.id} as GBP account ID`);
-      return [{ name: `accounts/${ui.id}`, accountName: ui.name || '' }];
-    }
-  } catch (err) {
-    console.warn('[gbp] userinfo fallback failed:', err.message);
-  }
-
   return [];
 }
 
 async function listLocations(tokens, accountName) {
   const c = authClient(tokens);
-  try {
-    const { data } = await c.request({
-      url:    `${BIZ_API}/${accountName}/locations`,
-      params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
-    });
-    return data.locations || [];
-  } catch (err) {
-    console.warn('[gbp] Business Info API failed, falling back to v4:', err.message);
-    // v4 response uses different field names — normalize to v1 shape
-    const { data } = await c.request({ url: `${GBP}/${accountName}/locations` });
-    return (data.locations || []).map(loc => ({
-      name:                loc.name,
-      title:               loc.locationName || '',
-      storefrontAddress:   { addressLines: [loc.address?.formattedAddress || ''] },
-      primaryCategory:     loc.primaryCategory,
-      metadata:            loc.metadata
-    }));
-  }
+  const { data } = await c.request({
+    url:    `${BIZ_API}/${accountName}/locations`,
+    params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
+  });
+  return data.locations || [];
 }
 
 function extractLocationNum(locName) {

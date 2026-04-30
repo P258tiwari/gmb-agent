@@ -42,56 +42,60 @@ router.get('/gbp/locations', auth, async (req, res) => {
   }
 });
 
-// GET /api/gbp/debug — raw API check (no auth needed for browser testing)
+// GET /api/gbp/debug — API health check
 router.get('/gbp/debug', async (req, res) => {
   const tokens = getAgencyTokens();
-  if (!tokens) return res.json({ error: 'No agency tokens' });
+  if (!tokens) return res.json({ connected: false, error: 'No agency tokens — connect Google first' });
 
   const { google } = require('googleapis');
-  const oauth2Client = new google.auth.OAuth2(
+  const c = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
-  oauth2Client.setCredentials(tokens);
+  c.setCredentials(tokens);
 
-  const out = {};
+  const out = { connected: true };
 
-  // Test new Account Management API
+  // 1. Account Management API
   try {
-    const r = await oauth2Client.request({ url: 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts' });
-    out.newApi = { ok: true, accounts: (r.data.accounts || []).map(a => a.name) };
-  } catch (e) {
-    out.newApi = { ok: false, status: e.response?.status, error: e.message };
-  }
+    const r = await c.request({ url: 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts' });
+    const accounts = r.data.accounts || [];
+    out.accounts = { ok: true, count: accounts.length, list: accounts.map(a => a.name) };
 
-  // Test old v4 API
-  try {
-    const r = await oauth2Client.request({ url: 'https://mybusiness.googleapis.com/v4/accounts' });
-    out.v4Api = { ok: true, accounts: (r.data.accounts || []).map(a => a.name) };
+    // 2. Business Information API — list locations for each account
+    out.locations = [];
+    for (const acc of accounts) {
+      try {
+        const lr = await c.request({
+          url: `https://mybusinessbusinessinformation.googleapis.com/v1/${acc.name}/locations`,
+          params: { readMask: 'name,title,storefrontAddress,metadata' }
+        });
+        for (const loc of lr.data.locations || []) {
+          out.locations.push({
+            account:    acc.name,
+            location:   loc.name,
+            locationId: loc.name.split('/').pop(),
+            accountId:  acc.name.replace('accounts/', ''),
+            title:      loc.title,
+            mapsUrl:    loc.metadata?.mapsUrl || '',
+            placeId:    loc.metadata?.placeId || ''
+          });
+        }
+      } catch (e) {
+        out.locations.push({ account: acc.name, ok: false, error: e.message });
+      }
+    }
   } catch (e) {
-    out.v4Api = { ok: false, status: e.response?.status, error: e.message };
-  }
-
-  // If either worked, list locations for first account found
-  const workingAccounts = out.newApi?.accounts || out.v4Api?.accounts || [];
-  if (workingAccounts.length > 0) {
-    const acc = workingAccounts[0];
-    try {
-      const r = await oauth2Client.request({
-        url: `https://mybusinessbusinessinformation.googleapis.com/v1/${acc}/locations`,
-        params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
-      });
-      out.locationsNewApi = { account: acc, ok: true, data: r.data };
-    } catch (e) {
-      out.locationsNewApi = { account: acc, ok: false, status: e.response?.status, error: e.message };
-    }
-    try {
-      const r = await oauth2Client.request({ url: `https://mybusiness.googleapis.com/v4/${acc}/locations` });
-      out.locationsV4 = { account: acc, ok: true, data: r.data };
-    } catch (e) {
-      out.locationsV4 = { account: acc, ok: false, status: e.response?.status, error: e.message };
-    }
+    const status = e.response?.status;
+    out.accounts = {
+      ok: false, status,
+      error: status === 429
+        ? 'Rate limited (429) — wait 60 seconds and refresh this page'
+        : status === 403
+        ? 'API not enabled — go to Google Cloud Console and enable "My Business Account Management API"'
+        : e.message
+    };
   }
 
   res.json(out);
