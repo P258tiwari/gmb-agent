@@ -1,9 +1,8 @@
-const router      = require('express').Router();
-const auth        = require('../middleware/auth');
-const ds          = require('../services/dataStore');
-const claude      = require('../services/claude');
-const gbp         = require('../services/gbp');
-const serpReviews = require('../services/serpReviews');
+const router = require('express').Router();
+const auth   = require('../middleware/auth');
+const ds     = require('../services/dataStore');
+const claude = require('../services/claude');
+const gbp    = require('../services/gbp');
 const { friendlyError } = require('../utils/apiError');
 
 // Merge GBP reviews into local reviews.json.
@@ -83,11 +82,11 @@ router.post('/:clientId/sync', auth, async (req, res) => {
       return res.json({ synced: 0, message: 'GBP location not linked — select the location in Edit Details first' });
     }
 
-    // GBP reviews API (mybusiness.googleapis.com) is fully deprecated — use SerpAPI
-    console.log('[reviews/sync] fetching via SerpAPI for', client.businessName);
-    const fetched = await serpReviews.fetchReviews(client);
-    const merged  = mergeReviews(req.params.clientId, fetched);
-    res.json({ synced: fetched.length, total: merged.length });
+    console.log('[reviews/sync] accountId:', accountId, '| locationId:', locationId);
+    const gbpReviews = await gbp.getReviews(tokens, accountId, locationId);
+    console.log('[reviews/sync] fetched', gbpReviews.length, 'reviews from GBP');
+    const merged     = mergeReviews(req.params.clientId, gbpReviews);
+    res.json({ synced: gbpReviews.length, total: merged.length });
   } catch (err) {
     console.error('[reviews/sync]', err.message);
     res.status(500).json({ error: err.message });
