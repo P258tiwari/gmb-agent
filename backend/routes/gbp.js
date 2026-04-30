@@ -370,8 +370,9 @@ router.post('/clients/:clientId/gbp/sync', auth, async (req, res) => {
 
   // 3. Insights / performance
   try {
-    const insights = await gbp.getInsights(tokens, accountId, locationId);
-    const saved    = ds.getClient(req.params.clientId);
+    const insights  = await gbp.getInsights(tokens, accountId, locationId);
+    const now       = new Date().toISOString();
+    const saved     = ds.getClient(req.params.clientId);
     ds.saveClient({
       ...saved,
       performance: {
@@ -381,14 +382,22 @@ router.post('/clients/:clientId/gbp/sync', auth, async (req, res) => {
         directionRequests: insights.directionClicks    || 0,
         websiteClicks:     insights.websiteClicks      || 0,
         searchImpressions: insights.searchImpressions  || 0,
-        lastSynced:        new Date().toISOString()
-      }
+        lastSynced:        now
+      },
+      syncedAt: now
     });
     result.insights = insights;
   } catch (err) {
     console.error('[gbp/sync] insights:', err.message);
     result.errors.push(`Insights: ${err.message}`);
   }
+
+  // Build a human-readable summary
+  const parts = [];
+  if (result.profile)                  parts.push('profile updated');
+  if (result.reviewsSynced > 0)        parts.push(`${result.reviewsSynced} reviews synced`);
+  if (result.insights)                 parts.push('performance data refreshed');
+  result.summary = parts.length ? parts.join(' · ') : 'Sync complete';
 
   res.json(result);
 });

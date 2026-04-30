@@ -3,6 +3,7 @@ const { google } = require('googleapis');
 const GBP      = 'https://mybusiness.googleapis.com/v4';
 const ACCT_API = 'https://mybusinessaccountmanagement.googleapis.com/v1';
 const BIZ_API  = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+const PERF_API = 'https://businessprofileperformance.googleapis.com/v1';
 
 function getOAuthClient() {
   return new google.auth.OAuth2(
@@ -130,12 +131,36 @@ const EMPTY_INSIGHTS = {
 };
 
 async function getInsights(tokens, accountId, locationId, startDate, endDate) {
-  if (!tokens || !accountId || !locationId) return EMPTY_INSIGHTS;
+  if (!tokens || !locationId) return EMPTY_INSIGHTS;
 
+  const end   = endDate   ? new Date(endDate)   : new Date();
+  const start = startDate ? new Date(startDate) : (() => { const d = new Date(end); d.setDate(d.getDate() - 29); return d; })();
+
+  // Try new GBP Performance API first (v4 reportInsights is deprecated)
   try {
-    const start = startDate ? new Date(startDate) : (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
-    const end   = endDate   ? new Date(endDate)   : new Date();
+    const c = authClient(tokens);
+    const { data } = await c.request({
+      url: `${PERF_API}/locations/${locationId}:fetchMultiDailyMetricsTimeSeries`,
+      params: {
+        'dailyMetric':                       ['CALL_CLICKS', 'WEBSITE_CLICKS', 'BUSINESS_DIRECTION_REQUESTS',
+                                              'BUSINESS_IMPRESSIONS_DESKTOP_MAPS', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS',
+                                              'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH', 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH'],
+        'dailyRange.startDate.year':  start.getFullYear(),
+        'dailyRange.startDate.month': start.getMonth() + 1,
+        'dailyRange.startDate.day':   start.getDate(),
+        'dailyRange.endDate.year':    end.getFullYear(),
+        'dailyRange.endDate.month':   end.getMonth() + 1,
+        'dailyRange.endDate.day':     end.getDate(),
+      }
+    });
+    return parsePerfApiInsights(data);
+  } catch (err) {
+    console.warn('[gbp] Performance API failed, trying v4:', err.message);
+  }
 
+  // Fall back to old v4 reportInsights
+  if (!accountId) return EMPTY_INSIGHTS;
+  try {
     const data = await gbpPost(tokens, `accounts/${accountId}/locations:reportInsights`, {
       locationNames: [`accounts/${accountId}/locations/${locationId}`],
       basicRequest: {
@@ -149,15 +174,33 @@ async function getInsights(tokens, accountId, locationId, startDate, endDate) {
         timeRange: { startTime: start.toISOString(), endTime: end.toISOString() }
       }
     });
-
-    return parseInsights(data);
+    return parseV4Insights(data);
   } catch (err) {
-    console.error('[gbp] getInsights error:', err.message);
+    console.error('[gbp] getInsights v4 error:', err.message);
     return EMPTY_INSIGHTS;
   }
 }
 
-function parseInsights(data) {
+function parsePerfApiInsights(data) {
+  const totals = {};
+  for (const series of data.multiDailyMetricTimeSeries || []) {
+    const metric = series.dailyMetric;
+    const total  = (series.timeSeries?.datedValues || [])
+      .reduce((sum, dv) => sum + (parseInt(dv.value || '0', 10) || 0), 0);
+    totals[metric] = total;
+  }
+  const mapImpressions    = (totals['BUSINESS_IMPRESSIONS_DESKTOP_MAPS']   || 0) + (totals['BUSINESS_IMPRESSIONS_MOBILE_MAPS']   || 0);
+  const searchImpressions = (totals['BUSINESS_IMPRESSIONS_DESKTOP_SEARCH'] || 0) + (totals['BUSINESS_IMPRESSIONS_MOBILE_SEARCH'] || 0);
+  return {
+    profileViews:      mapImpressions + searchImpressions,
+    searchImpressions,
+    phoneCalls:        totals['CALL_CLICKS']                     || 0,
+    directionClicks:   totals['BUSINESS_DIRECTION_REQUESTS']     || 0,
+    websiteClicks:     totals['WEBSITE_CLICKS']                  || 0,
+  };
+}
+
+function parseV4Insights(data) {
   const metrics = {};
   const locationMetrics = (data.locationMetrics || [])[0];
   if (!locationMetrics) return EMPTY_INSIGHTS;
@@ -172,7 +215,6 @@ function parseInsights(data) {
       case 'ACTIONS_WEBSITE':            metrics.websiteClicks     = val; break;
     }
   }
-
   metrics.profileViews      = (metrics.directSearches || 0) + (metrics.discoverySearches || 0);
   metrics.searchImpressions = metrics.directSearches || 0;
   return metrics;

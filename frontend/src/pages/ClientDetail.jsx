@@ -753,17 +753,19 @@ export default function ClientDetail() {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // GBP sync banner state
-  const [gbpSyncStatus, setGbpSyncStatus] = useState(null); // null | 'syncing' | 'done' | 'error'
+  const [gbpSyncStatus,  setGbpSyncStatus]  = useState(null); // null | 'syncing' | 'done' | 'error'
+  const [gbpSyncSummary, setGbpSyncSummary] = useState('');
 
   async function handleGbpSync() {
     setGbpSyncStatus('syncing');
+    setGbpSyncSummary('');
     try {
-      await api.post(`/clients/${clientId}/gbp/sync`);
+      const res       = await api.post(`/clients/${clientId}/gbp/sync`);
       const refreshed = await api.get(`/clients/${clientId}`);
       setClient(refreshed.data);
+      setGbpSyncSummary(res.data.summary || 'GBP data synced');
       setGbpSyncStatus('done');
-      setTimeout(() => setGbpSyncStatus(null), 5000);
+      setTimeout(() => setGbpSyncStatus(null), 6000);
     } catch {
       setGbpSyncStatus('error');
       setTimeout(() => setGbpSyncStatus(null), 6000);
@@ -823,7 +825,7 @@ export default function ClientDetail() {
               {gbpSyncStatus === 'syncing'
                 ? 'Syncing GBP profile, reviews, and performance data…'
                 : gbpSyncStatus === 'done'
-                ? 'GBP data synced — profile, reviews, and performance updated.'
+                ? gbpSyncSummary || 'GBP data synced successfully.'
                 : 'GBP sync failed. Check your Google connection and try again.'
               }
             </div>
@@ -900,13 +902,15 @@ export default function ClientDetail() {
                   </a>
                 </div>
 
-                {client.performance?.lastSynced && (
-                  <div className="text-[11px] text-[#9CA3AF] mt-3 pt-3 border-t border-[#F3F4F6]">
-                    Last synced:{' '}
-                    {new Date(client.performance.lastSynced).toLocaleString('en-IN', {
-                      day: 'numeric', month: 'short',
-                      hour: '2-digit', minute: '2-digit'
-                    })}
+                {(client.syncedAt || client.performance?.lastSynced) && (
+                  <div className="text-[11px] text-[#9CA3AF] mt-3 pt-3 border-t border-[#F3F4F6] space-y-0.5">
+                    <div>
+                      Last synced:{' '}
+                      {new Date(client.syncedAt || client.performance.lastSynced).toLocaleString('en-IN', {
+                        day: 'numeric', month: 'short',
+                        hour: '2-digit', minute: '2-digit'
+                      })}
+                    </div>
                   </div>
                 )}
               </>
