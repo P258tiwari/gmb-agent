@@ -55,7 +55,7 @@ function getAgencyTokens() {
 
 // POST /api/reviews/:clientId/sync
 // Pull latest reviews from GBP and update local JSON
-router.post('/:clientId/sync', auth, async (req, res) => {
+router.post('/:clientId/sync', auth, async (req, res) => {``
   const client = ds.getClient(req.params.clientId);
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
