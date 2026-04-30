@@ -285,34 +285,23 @@ async function fetchCurrentProfile(tokens, accountId, locationId) {
   if (!tokens || !accountId || !locationId) return null;
   const c = authClient(tokens);
 
-  // Try new Business Information API first (v4 profile endpoint is deprecated/404)
   try {
     const { data: loc } = await c.request({
       url:    `${BIZ_API}/locations/${locationId}`,
-      params: { readMask: 'name,title,primaryCategory,additionalCategories,profile,serviceList' }
+      params: { readMask: 'name,title,primaryCategory,additionalCategories,profile,serviceItems' }
     });
     return {
       name:                loc.title || '',
       primaryCategory:     loc.primaryCategory?.displayName || '',
       secondaryCategories: (loc.additionalCategories || []).map(cat => cat.displayName).filter(Boolean),
       description:         loc.profile?.description || '',
-      services:            (loc.serviceList?.services || []).map(s => s.displayName || s.serviceTypeId || '').filter(Boolean),
+      services:            (loc.serviceItems || []).map(s => s.structuredServiceItem?.description || s.freeFormServiceItem?.label?.displayName || '').filter(Boolean),
       rawData:             loc
     };
   } catch (err) {
-    console.warn('[gbp] fetchCurrentProfile BIZ_API failed, trying v4:', err.message);
+    console.warn('[gbp] fetchCurrentProfile failed:', err.response?.data?.error?.message || err.message);
+    return null;
   }
-
-  // Fall back to v4
-  const loc = await gbpGet(tokens, `accounts/${accountId}/locations/${locationId}`);
-  return {
-    name:                loc.locationName || '',
-    primaryCategory:     loc.primaryCategory?.displayName || '',
-    secondaryCategories: (loc.additionalCategories || []).map(cat => cat.displayName).filter(Boolean),
-    description:         loc.profile?.description || '',
-    services:            (loc.serviceList?.services || []).map(s => s.displayName || s.serviceTypeId || '').filter(Boolean),
-    rawData:             loc
-  };
 }
 
 // ─── Profile update ───────────────────────────────────────────────────────────
