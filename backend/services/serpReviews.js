@@ -11,27 +11,26 @@ async function findDataId(client) {
   const city    = client.city || '';
   const address = client.address || '';
 
-  // Try progressively broader queries until one returns results
-  const attempts = [
-    { q: `${name} ${city}`,    location: city || undefined },
-    { q: `${name} ${address}`, location: undefined },
-    { q: name,                 location: city || undefined },
-  ];
+  // Try progressively specific queries — `location` is not a valid param for google_maps engine
+  const queries = [
+    `${name} ${city}`,
+    `${name} ${address}`,
+    name,
+  ].map(q => q.trim()).filter(Boolean);
 
-  for (const attempt of attempts) {
-    console.log('[serpReviews] searching Google Maps:', attempt.q);
-    const params = { engine: 'google_maps', q: attempt.q.trim(), api_key: apiKey };
-    if (attempt.location) params.location = attempt.location;
-
-    const { data } = await axios.get(BASE, { params });
+  for (const q of queries) {
+    console.log('[serpReviews] searching Google Maps:', q);
+    const { data } = await axios.get(BASE, {
+      params: { engine: 'google_maps', q, type: 'search', api_key: apiKey }
+    });
     const results = data.local_results || [];
-    if (!results.length) continue;
+    if (!results.length) { console.log('[serpReviews] no results for:', q); continue; }
 
     const dataId = results[0].data_id;
-    if (!dataId) continue;
+    if (!dataId) { console.log('[serpReviews] data_id missing in result'); continue; }
 
     ds.saveClient({ ...client, serpDataId: dataId });
-    console.log('[serpReviews] found data_id:', dataId, 'via query:', attempt.q);
+    console.log('[serpReviews] found data_id:', dataId, 'via query:', q);
     return dataId;
   }
 
