@@ -227,9 +227,13 @@ function starRatingToNumber(starRating) {
 }
 
 async function getReviews(tokens, accountId, locationId) {
-  if (!tokens || !accountId || !locationId) return [];
+  if (!tokens || !accountId || !locationId) {
+    console.warn('[gbp] getReviews: missing tokens/accountId/locationId', { hasTokens: !!tokens, accountId, locationId });
+    return [];
+  }
 
   const locationName = `accounts/${accountId}/locations/${locationId}`;
+  console.log('[gbp] getReviews: fetching', `${GBP}/${locationName}/reviews`);
   try {
     const all = [];
     let pageToken;
@@ -240,6 +244,7 @@ async function getReviews(tokens, accountId, locationId) {
         : `${locationName}/reviews?pageSize=50`;
       const res = await gbpGet(tokens, url);
       const page = res.reviews || [];
+      console.log('[gbp] getReviews: page returned', page.length, 'reviews');
       page.forEach(r => all.push({
         id:            r.reviewId,
         gbpReviewId:   r.reviewId,
@@ -259,7 +264,7 @@ async function getReviews(tokens, accountId, locationId) {
 
     return all;
   } catch (err) {
-    console.error('[gbp] getReviews error:', err.message);
+    console.error('[gbp] getReviews error:', err.response?.data || err.message);
     return [];
   }
 }
