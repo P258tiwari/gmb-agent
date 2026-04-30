@@ -360,27 +360,46 @@ async function applyGbpUpdate(tokens, accountId, locationId, changes) {
 
 // ─── New-API helpers (with v4 fallback) ──────────────────────────────────────
 
-async function listAccounts(tokens) {
-  const c = authClient(tokens);
+// ─── In-memory cache (5-minute TTL) to avoid hammering quota ─────────────────
+const _cache = {};
+function cacheGet(key) {
+  const entry = _cache[key];
+  if (!entry) return null;
+  if (Date.now() - entry.ts > 5 * 60 * 1000) { delete _cache[key]; return null; }
+  return entry.value;
+}
+function cacheSet(key, value) { _cache[key] = { value, ts: Date.now() }; }
 
-  // Account Management API (v4 is fully shut down — do not call it)
+async function listAccounts(tokens) {
+  const cacheKey = 'accounts';
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const c = authClient(tokens);
   try {
     const { data } = await c.request({ url: `${ACCT_API}/accounts` });
-    if (data.accounts?.length) return data.accounts;
+    const accounts = data.accounts || [];
+    if (accounts.length) cacheSet(cacheKey, accounts);
+    return accounts;
   } catch (err) {
     console.warn('[gbp] Account Management API failed:', err.message);
+    return [];
   }
-
-  return [];
 }
 
 async function listLocations(tokens, accountName) {
+  const cacheKey = `locations:${accountName}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
   const c = authClient(tokens);
   const { data } = await c.request({
     url:    `${BIZ_API}/${accountName}/locations`,
     params: { readMask: 'name,title,storefrontAddress,primaryCategory,metadata' }
   });
-  return data.locations || [];
+  const locations = data.locations || [];
+  cacheSet(cacheKey, locations);
+  return locations;
 }
 
 function extractLocationNum(locName) {
@@ -485,11 +504,14 @@ async function getMyGbpLocations(tokens) {
   return locations;
 }
 
+function clearCache() { Object.keys(_cache).forEach(k => delete _cache[k]); }
+
 module.exports = {
   getAuthUrl, getTokenFromCode, getGoogleUserInfo, getFallbackAccountId,
   createPost, publishPost,
   getInsights,
   getReviews, replyToReview,
   fetchCurrentProfile, applyGbpUpdate,
-  findLocationByPlaceId, findAccountByLocationId, getMyGbpLocations
+  findLocationByPlaceId, findAccountByLocationId, getMyGbpLocations,
+  clearCache
 };

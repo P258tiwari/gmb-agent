@@ -29,7 +29,7 @@ router.post('/gbp/agency/disconnect', auth, (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/gbp/locations — list all GBP locations linked to agency account
+// GET /api/gbp/locations — list all GBP locations (cached 5 min)
 router.get('/gbp/locations', auth, async (req, res) => {
   const tokens = getAgencyTokens();
   if (!tokens) return res.json([]);
@@ -38,6 +38,26 @@ router.get('/gbp/locations', auth, async (req, res) => {
     res.json(locations);
   } catch (err) {
     console.error('[gbp/locations]', err.message);
+    // Return empty on rate-limit so the UI degrades gracefully
+    if (err.response?.status === 429) {
+      return res.json({ rateLimited: true, locations: [], error: 'Rate limited — try again in 60 seconds' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/gbp/locations/refresh — force clear cache and reload
+router.post('/gbp/locations/refresh', auth, async (req, res) => {
+  const tokens = getAgencyTokens();
+  if (!tokens) return res.status(400).json({ error: 'Google not connected' });
+  try {
+    gbp.clearCache();
+    const locations = await gbp.getMyGbpLocations(tokens);
+    res.json(locations);
+  } catch (err) {
+    if (err.response?.status === 429) {
+      return res.status(429).json({ error: 'Rate limited — wait 60 seconds then try again' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
