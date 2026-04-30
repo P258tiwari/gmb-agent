@@ -7,23 +7,35 @@ async function findDataId(client) {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) throw new Error('SERP_API_KEY not set');
 
-  const q = [client.businessName || client.name, client.city, client.country]
-    .filter(Boolean).join(' ');
+  const name    = client.businessName || client.name || '';
+  const city    = client.city || '';
+  const address = client.address || '';
 
-  const { data } = await axios.get(BASE, {
-    params: { engine: 'google_maps', q, api_key: apiKey }
-  });
+  // Try progressively broader queries until one returns results
+  const attempts = [
+    { q: `${name} ${city}`,    location: city || undefined },
+    { q: `${name} ${address}`, location: undefined },
+    { q: name,                 location: city || undefined },
+  ];
 
-  const results = data.local_results || [];
-  if (!results.length) throw new Error(`No Google Maps result found for: ${q}`);
+  for (const attempt of attempts) {
+    console.log('[serpReviews] searching Google Maps:', attempt.q);
+    const params = { engine: 'google_maps', q: attempt.q.trim(), api_key: apiKey };
+    if (attempt.location) params.location = attempt.location;
 
-  const dataId = results[0].data_id;
-  if (!dataId) throw new Error('data_id missing from SerpAPI result');
+    const { data } = await axios.get(BASE, { params });
+    const results = data.local_results || [];
+    if (!results.length) continue;
 
-  // Persist so future syncs skip the search step
-  ds.saveClient({ ...client, serpDataId: dataId });
-  console.log('[serpReviews] found data_id:', dataId, 'for', q);
-  return dataId;
+    const dataId = results[0].data_id;
+    if (!dataId) continue;
+
+    ds.saveClient({ ...client, serpDataId: dataId });
+    console.log('[serpReviews] found data_id:', dataId, 'via query:', attempt.q);
+    return dataId;
+  }
+
+  throw new Error(`Could not find Google Maps listing for: ${name} ${city}`);
 }
 
 function parseReview(r) {
