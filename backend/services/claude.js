@@ -1,6 +1,8 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const _apiKey = process.env.ANTHROPIC_API_KEY;
+console.log('[claude] ANTHROPIC_API_KEY loaded:', _apiKey ? `${_apiKey.slice(0, 20)}...${_apiKey.slice(-4)}` : 'MISSING');
+const anthropic = new Anthropic({ apiKey: _apiKey });
 
 // ─── Shared context builder ───────────────────────────────────────────────────
 // Builds a rich, consistent business context string used in ALL Claude prompts.
@@ -339,7 +341,7 @@ No duplicates across categories.`
 async function generateGbpOptimization(clientData) {
   const gbpProfile = clientData.gbpProfile || {};
 
-  const message = await anthropic.messages.create({
+  const payload = {
     model:      'claude-sonnet-4-5',
     max_tokens: 2048,
     system: `You are a Google Business Profile optimization expert for Indian local businesses.
@@ -378,7 +380,10 @@ Return this JSON object exactly:
   }
 }`
     }]
-  });
+  };
+
+  console.log('[claude/optimize] calling model:', payload.model, '| key:', _apiKey ? `${_apiKey.slice(0, 20)}...${_apiKey.slice(-4)}` : 'MISSING');
+  const message = await anthropic.messages.create(payload);
 
   const text = message.content[0].text.trim();
   return parseJSONObject(text);
