@@ -443,7 +443,11 @@ async function findLocationByPlaceId(tokens, placeId) {
         const match = locs.find(loc => {
           const locPlaceId = loc.metadata?.placeId || '';
           const locNum     = extractLocationNum(loc.name);
-          return locPlaceId === placeId || locNum === placeId;
+          // Also check mapsUrl which contains the Google CID
+          // e.g. "https://maps.google.com/?cid=11538018071908470183"
+          const mapsUrl    = loc.metadata?.mapsUrl || '';
+          const cidMatch   = mapsUrl.includes(`cid=${placeId}`);
+          return locPlaceId === placeId || locNum === placeId || cidMatch;
         });
         if (match) {
           return {

@@ -47,6 +47,12 @@ router.get('/:clientId', auth, (req, res) => {
   res.json(reviews);
 });
 
+function getAgencyTokens() {
+  const data = ds.getAgencyData();
+  if (!data) return null;
+  return data.tokens || (data.access_token ? data : null);
+}
+
 // POST /api/reviews/:clientId/sync
 // Pull latest reviews from GBP and update local JSON
 router.post('/:clientId/sync', auth, async (req, res) => {
@@ -54,12 +60,26 @@ router.post('/:clientId/sync', auth, async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Client not found' });
 
   try {
-    const tokens     = client.gbpTokens || null;
-    const accountId  = client.gbpAccountId || client.accountId || null;
-    const locationId = client.gbpLocationId || client.locationId || null;
+    const tokens     = client.gbpTokens || ds.getClientTokens(req.params.clientId) || getAgencyTokens();
+    let   accountId  = client.gbpAccountId || client.accountId || null;
+    let   locationId = client.gbpLocationId || client.locationId || null;
 
-    if (!tokens || !accountId || !locationId) {
-      return res.json({ synced: 0, message: 'GBP not connected — showing local data only' });
+    if (!tokens) {
+      return res.json({ synced: 0, message: 'Google not connected — connect Google in Agency Settings first' });
+    }
+
+    // Auto-discover IDs from placeId if missing
+    if ((!accountId || !locationId) && client.gbpPlaceId) {
+      const found = await gbp.findLocationByPlaceId(tokens, client.gbpPlaceId);
+      if (found) {
+        accountId  = found.accountId;
+        locationId = found.locationId;
+        ds.saveClient({ ...client, gbpAccountId: accountId, gbpLocationId: locationId });
+      }
+    }
+
+    if (!accountId || !locationId) {
+      return res.json({ synced: 0, message: 'GBP location not linked — select the location in Edit Details first' });
     }
 
     const gbpReviews = await gbp.getReviews(tokens, accountId, locationId);
