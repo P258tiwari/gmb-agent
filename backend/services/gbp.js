@@ -373,10 +373,12 @@ async function listAccounts(tokens) {
   try {
     const { data } = await c.request({ url: `${ACCT_API}/accounts` });
     const accounts = data.accounts || [];
-    if (accounts.length) cacheSet(cacheKey, accounts);
+    cacheSet(cacheKey, accounts);
     return accounts;
   } catch (err) {
     console.warn('[gbp] Account Management API failed:', err.message);
+    // Cache the empty result for 60s to prevent quota cascade on repeated retries
+    _cache[cacheKey] = { value: [], ts: Date.now() - (4 * 60 * 1000) };
     return [];
   }
 }
